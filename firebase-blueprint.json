@@ -1,0 +1,152 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information and roles.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "displayName": { "type": "string", "description": "User's display name" },
+        "firstName": { "type": "string", "description": "User's first name" },
+        "lastName": { "type": "string", "description": "User's last name" },
+        "email": { "type": "string", "format": "email", "description": "User's email" },
+        "role": { "type": "string", "enum": ["admin", "editor", "viewer", "jefe_categoria"], "description": "User's role in the league" },
+        "category": { "type": "string", "enum": ["Zapetita", "Biberon", "Escuelita", "Pewee", "Infantil", "Pony", "Colt"], "description": "Assigned category for Jefe de Categoría" },
+        "teamId": { "type": "string", "description": "Associated team ID (if coach or player)" },
+        "leagueId": { "type": "string", "description": "Associated league ID" }
+      },
+      "required": ["uid", "displayName", "email", "role"]
+    },
+    "League": {
+      "title": "League",
+      "description": "League details.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "League name" },
+        "season": { "type": "string", "description": "Current season name (e.g., Spring 2026)" },
+        "adminId": { "type": "string", "description": "UID of the league administrator" }
+      },
+      "required": ["name", "adminId"]
+    },
+    "Team": {
+      "title": "Team",
+      "description": "Team details and roster.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Team name" },
+        "category": { "type": "string", "enum": ["Zapetita", "Biberon", "Escuelita", "Pewee", "Infantil", "Pony", "Colt"], "description": "Team category" },
+        "leagueId": { "type": "string", "description": "League ID" },
+        "coachId": { "type": "string", "description": "UID of the team coach" },
+        "wins": { "type": "number", "description": "Total wins" },
+        "losses": { "type": "number", "description": "Total losses" },
+        "runsScored": { "type": "number", "description": "Total runs scored" },
+        "runsAllowed": { "type": "number", "description": "Total runs allowed" }
+      },
+      "required": ["name", "leagueId"]
+    },
+    "Player": {
+      "title": "Player",
+      "description": "Player profile and aggregated stats.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Player name" },
+        "number": { "type": "string", "description": "Jersey number" },
+        "teamId": { "type": "string", "description": "Team ID" },
+        "position": { "type": "string", "description": "Primary position" },
+        "stats": {
+          "type": "object",
+          "properties": {
+            "atBats": { "type": "number" },
+            "hits": { "type": "number" },
+            "homeRuns": { "type": "number" },
+            "runs": { "type": "number" },
+            "rbis": { "type": "number" },
+            "strikeouts": { "type": "number" },
+            "walks": { "type": "number" },
+            "battingAverage": { "type": "number" },
+            "inningsPitched": { "type": "number" },
+            "pitchingStrikeouts": { "type": "number" },
+            "pitchingWalks": { "type": "number" },
+            "earnedRuns": { "type": "number" },
+            "era": { "type": "number" },
+            "wins": { "type": "number" },
+            "losses": { "type": "number" },
+            "putouts": { "type": "number" },
+            "assists": { "type": "number" },
+            "errors": { "type": "number" },
+            "fieldingPercentage": { "type": "number" }
+          }
+        }
+      },
+      "required": ["name", "teamId"]
+    },
+    "Season": {
+      "title": "Season",
+      "description": "A league season.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Season name" },
+        "startDate": { "type": "string", "format": "date", "description": "Season start date" },
+        "active": { "type": "boolean", "description": "Whether the season is currently active" }
+      },
+      "required": ["name", "startDate", "active"]
+    },
+    "Game": {
+      "title": "Game",
+      "description": "Game details and current status.",
+      "type": "object",
+      "properties": {
+        "leagueId": { "type": "string" },
+        "homeTeamId": { "type": "string" },
+        "awayTeamId": { "type": "string" },
+        "homeTeamName": { "type": "string" },
+        "awayTeamName": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "field": { "type": "string", "description": "Assigned field for the game" },
+        "status": { "type": "string", "enum": ["scheduled", "in-progress", "completed"] },
+        "score": {
+          "type": "object",
+          "properties": {
+            "home": { "type": "number" },
+            "away": { "type": "number" }
+          }
+        },
+        "inning": { "type": "number" },
+        "isTop": { "type": "boolean" },
+        "outs": { "type": "number" },
+        "balls": { "type": "number" },
+        "strikes": { "type": "number" },
+        "bookImageUrl": { "type": "string", "description": "Scorebook image Data URL or link" },
+        "bookUploadedAt": { "type": "string", "description": "ISO timestamp of upload" },
+        "bookUploadedBy": { "type": "string", "description": "Name or email of user who uploaded" },
+        "boxScore": { "type": "object", "description": "AI extracted or edited baseball box score with player names, batting lines, and team totals" }
+      },
+      "required": ["leagueId", "homeTeamId", "awayTeamId", "date", "status"]
+    },
+    "Play": {
+      "title": "Play",
+      "description": "Individual play event in a game.",
+      "type": "object",
+      "properties": {
+        "gameId": { "type": "string" },
+        "inning": { "type": "number" },
+        "isTop": { "type": "boolean" },
+        "batterId": { "type": "string" },
+        "pitcherId": { "type": "string" },
+        "description": { "type": "string" },
+        "result": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["gameId", "inning", "isTop", "description", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": { "schema": "User", "description": "User profiles" },
+    "/leagues/{leagueId}": { "schema": "League", "description": "Leagues" },
+    "/teams/{teamId}": { "schema": "Team", "description": "Teams" },
+    "/players/{playerId}": { "schema": "Player", "description": "Players" },
+    "/games/{gameId}": { "schema": "Game", "description": "Games" },
+    "/games/{gameId}/plays/{playId}": { "schema": "Play", "description": "Play-by-play events" },
+    "/seasons/{seasonId}": { "schema": "Season", "description": "Seasons" }
+  }
+}

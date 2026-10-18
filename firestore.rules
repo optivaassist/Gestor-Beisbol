@@ -1,0 +1,115 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+          request.auth.token.email == "llorch7@gmail.com");
+    }
+
+    function isJefeCategoria(category) {
+      let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return isAuthenticated() && userData.role == 'jefe_categoria' && userData.category == category;
+    }
+
+    function isEditor() {
+      let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return isAuthenticated() && (userData.role in ['admin', 'editor']);
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string &&
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.uid is string &&
+             data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 100 &&
+             isValidEmail(data.email) &&
+             data.role in ['admin', 'editor', 'viewer', 'jefe_categoria'];
+    }
+
+    function isValidTeam(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.category in ['Zapetita', 'Biberon', 'Escuelita', 'Pewee', 'Infantil', 'Pony', 'Colt'];
+    }
+
+    function isValidPlayer(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.teamId is string;
+    }
+
+    function isValidGame(data) {
+      return data.homeTeamId is string &&
+             data.awayTeamId is string &&
+             data.field is string &&
+             data.status in ['scheduled', 'in-progress', 'completed'];
+    }
+
+    function isValidPlay(data) {
+      return data.gameId is string &&
+             data.description is string && data.description.size() > 0;
+    }
+
+    // ===============================================================
+    // Match Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == 'viewer';
+      allow update: if (isOwner(userId) || isAdmin()) && isValidUser(request.resource.data) &&
+                      (isOwner(userId) && !isAdmin() ? request.resource.data.role == resource.data.role : true);
+    }
+
+    match /teams/{teamId} {
+      allow read, write: if true;
+    }
+
+    match /players/{playerId} {
+      allow read, write: if true;
+    }
+
+    match /games/{gameId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+
+      match /plays/{playId} {
+        allow read, write: if true;
+      }
+
+      match /scorebook_files/{fileId} {
+        allow read, write: if true;
+      }
+    }
+
+    match /scorebook_files/{fileId} {
+      allow read, write: if true;
+    }
+
+    match /seasons/{seasonId} {
+      allow read, write: if true;
+    }
+  }
+}

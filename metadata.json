@@ -1,0 +1,6 @@
+{
+  "name": "Gestor de Liga de Béisbol",
+  "description": "Una aplicación integral de gestión de ligas de béisbol con anotación en tiempo real, rosters de equipos y estadísticas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
