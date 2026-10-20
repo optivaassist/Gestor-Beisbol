@@ -43,7 +43,7 @@ export default function TeamRosterModal({
   games = [],
   teams = [],
   onOpenCedulaUpload,
-  canEdit = true,
+  canEdit = false,
   onViewPlayerStats,
 }: TeamRosterModalProps) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -65,29 +65,33 @@ export default function TeamRosterModal({
   const [editPosition, setEditPosition] = useState('');
   const [editNotes, setEditNotes] = useState('');
 
-  if (!isOpen || !team) return null;
-
-  const teamPlayers = players.filter(p => p.teamId === team.id);
+  const teamPlayers = useMemo(() => {
+    if (!team) return [];
+    return players.filter(p => p.teamId === team.id);
+  }, [team, players]);
 
   // Compute official accumulated statistics from matches/box scores
   const playerStatsMap = useMemo(() => {
     const map = new Map<string, ReturnType<typeof calculatePlayerAccumulatedStats>>();
+    if (!team) return map;
     for (const p of teamPlayers) {
       map.set(p.id, calculatePlayerAccumulatedStats(p, games, teams));
     }
     return map;
-  }, [teamPlayers, games, teams]);
+  }, [team, teamPlayers, games, teams]);
 
-  const filteredPlayers = teamPlayers.filter(p => {
-    if (!searchQuery.trim()) return true;
+  const filteredPlayers = useMemo(() => {
+    if (!searchQuery.trim()) return teamPlayers;
     const q = searchQuery.toLowerCase();
-    return (
+    return teamPlayers.filter(p =>
       p.name.toLowerCase().includes(q) ||
       p.number.toLowerCase().includes(q) ||
       p.position.toLowerCase().includes(q) ||
       (p.notes && p.notes.toLowerCase().includes(q))
     );
-  });
+  }, [teamPlayers, searchQuery]);
+
+  if (!isOpen || !team) return null;
 
   const handleCreatePlayer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -406,14 +410,16 @@ export default function TeamRosterModal({
               </div>
 
               <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => onOpenCedulaUpload(team.id)}
-                  className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-bold py-2.5 px-5 rounded-2xl shadow-lg shadow-indigo-600/20 text-xs uppercase tracking-wider cursor-pointer active:scale-95"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  <span>Subir Cédula del Equipo</span>
-                </button>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenCedulaUpload(team.id)}
+                    className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-bold py-2.5 px-5 rounded-2xl shadow-lg shadow-indigo-600/20 text-xs uppercase tracking-wider cursor-pointer active:scale-95"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>Subir Cédula del Equipo</span>
+                  </button>
+                )}
 
                 {canEdit && (
                   <button

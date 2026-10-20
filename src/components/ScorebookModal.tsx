@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { Game, GameBoxScoreData, TeamBoxScore, BoxScoreBatter, UserProfile, formatFieldName } from '../types';
+import { Game, GameBoxScoreData, TeamBoxScore, BoxScoreBatter, UserProfile, formatFieldName, Player } from '../types';
+import { useTeams } from '../context/TeamsContext';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   BookOpen,
@@ -27,7 +28,7 @@ import {
   CheckCircle2,
   Award
 } from 'lucide-react';
-import { fetchTeamRoster, reconcileBoxScore, mergeBoxScores, processScorebookFile, cleanFirestoreData, loadScorebookFile, hasUploadedBooks, getUploadedSheetsCount } from '../utils/scorebookUtils';
+import { fetchTeamRoster, reconcileBoxScore, mergeBoxScores, processScorebookFile, cleanFirestoreData, loadScorebookFile, hasUploadedBooks, getUploadedSheetsCount, normalizeStr } from '../utils/scorebookUtils';
 
 interface ScorebookModalProps {
   game: Game;
@@ -78,6 +79,71 @@ export default function ScorebookModal({
   } | null>(null);
   const [adjustSuccessToast, setAdjustSuccessToast] = useState<string | null>(null);
   const [savingAdjust, setSavingAdjust] = useState(false);
+
+  // Official cédula team rosters for dropdown assignment
+  const { teams } = useTeams();
+  const [homeRoster, setHomeRoster] = useState<Player[]>([]);
+  const [awayRoster, setAwayRoster] = useState<Player[]>([]);
+  const [loadingRosters, setLoadingRosters] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadRosters = async () => {
+      setLoadingRosters(true);
+      try {
+        const [home, away] = await Promise.all([
+          fetchTeamRoster(game.homeTeamId, game.homeTeamName, teams),
+          fetchTeamRoster(game.awayTeamId, game.awayTeamName, teams),
+        ]);
+        if (isMounted) {
+          setHomeRoster(home);
+          setAwayRoster(away);
+        }
+      } catch (err) {
+        console.error('Error fetching rosters for ScorebookModal:', err);
+      } finally {
+        if (isMounted) setLoadingRosters(false);
+      }
+    };
+    loadRosters();
+    return () => {
+      isMounted = false;
+    };
+  }, [game.id, game.homeTeamId, game.awayTeamId, game.homeTeamName, game.awayTeamName, teams]);
+
+  const getTeamRoster = (teamIdx: number) => {
+    if (!editableBoxScore || !editableBoxScore.teams || !editableBoxScore.teams[teamIdx]) {
+      return {
+        roster: homeRoster,
+        teamName: game.homeTeamName,
+        otherRoster: awayRoster,
+        otherTeamName: game.awayTeamName,
+      };
+    }
+    const t = editableBoxScore.teams[teamIdx];
+    const tType = t.teamType;
+    const isAway =
+      tType === 'away' ||
+      (tType !== 'home' &&
+        (normalizeStr(t.teamName).includes(normalizeStr(game.awayTeamName)) ||
+         normalizeStr(game.awayTeamName).includes(normalizeStr(t.teamName))));
+
+    if (isAway) {
+      return {
+        roster: awayRoster,
+        teamName: game.awayTeamName || t.teamName,
+        otherRoster: homeRoster,
+        otherTeamName: game.homeTeamName,
+      };
+    } else {
+      return {
+        roster: homeRoster,
+        teamName: game.homeTeamName || t.teamName,
+        otherRoster: awayRoster,
+        otherTeamName: game.awayTeamName,
+      };
+    }
+  };
 
   const handleDeleteBook = async () => {
     setDeleting(true);
@@ -1086,6 +1152,123 @@ export default function ScorebookModal({
 
               {/* Form fields */}
               <div className="space-y-4 text-xs">
+                {/* Roster Dropdown: Seleccionar jugador de la cédula oficial */}
+                {(() => {
+                  const { roster: teamRoster, teamName: currentTName, otherRoster, otherTeamName: otherTName } = getTeamRoster(adjustingModal.teamIdx);
+                  const sortedRoster = [...teamRoster].sort((a, b) => a.name.localeCompare(b.name));
+                  const sortedOther = [...otherRoster].sort((a, b) => a.name.localeCompare(b.name));
+
+                  const matchedInTeam = teamRoster.find(p => 
+                    (adjustingModal.batter.playerId && p.id === adjustingModal.batter.playerId) ||
+                    normalizeStr(p.name) === normalizeStr(adjustingModal.batter.name)
+                  );
+                  const matchedInOther = !matchedInTeam && otherRoster.find(p => 
+                    (adjustingModal.batter.playerId && p.id === adjustingModal.batter.playerId) ||
+                    normalizeStr(p.name) === normalizeStr(adjustingModal.batter.name)
+                  );
+                  const currentSelectedId = matchedInTeam?.id || matchedInOther?.id || adjustingModal.batter.playerId || '';
+
+                  return (
+                    <div className="space-y-2.5 p-4 bg-gradient-to-br from-indigo-50/90 via-slate-50 to-blue-50/60 dark:from-indigo-950/40 dark:via-slate-900/50 dark:to-slate-800/50 border-2 border-indigo-200 dark:border-indigo-800/80 rounded-2xl shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <label className="flex items-center gap-2 font-black text-indigo-900 dark:text-indigo-200 uppercase text-xs tracking-wider">
+                          <Users className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                          <span>Asignar Jugador del Roster Oficial</span>
+                        </label>
+                        {loadingRosters ? (
+                          <span className="flex items-center gap-1.5 text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <span>Cargando cédula...</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-100/80 dark:bg-indigo-900/60 px-2 py-0.5 rounded-md">
+                            {teamRoster.length} en roster ({currentTName})
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug">
+                        Si en el libro la letra es confusa o el sistema asignó los turnos al jugador equivocado, despliega y selecciona aquí al jugador correcto:
+                      </p>
+
+                      <div className="relative">
+                        <select
+                          value={currentSelectedId}
+                          onChange={(e) => {
+                            const selectedId = e.target.value;
+                            if (!selectedId) return;
+                            const chosen = [...teamRoster, ...otherRoster].find(p => p.id === selectedId);
+                            if (chosen) {
+                              setAdjustingModal(prev => prev ? {
+                                ...prev,
+                                batter: {
+                                  ...prev.batter,
+                                  playerId: chosen.id,
+                                  name: chosen.name,
+                                  playerNumber: chosen.number ? (chosen.number.startsWith('#') ? chosen.number : `#${chosen.number}`) : prev.batter.playerNumber,
+                                  position: chosen.position || prev.batter.position || ''
+                                }
+                              } : null);
+                            }
+                          }}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border-2 border-indigo-400 dark:border-indigo-600 rounded-xl font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs shadow-sm cursor-pointer"
+                        >
+                          <option value="">
+                            {teamRoster.length > 0 
+                              ? `-- Seleccionar jugador del roster (${currentTName} - ${teamRoster.length} jugadores) --`
+                              : `-- No hay jugadores en cédula para ${currentTName} --`}
+                          </option>
+
+                          {teamRoster.length > 0 && (
+                            <optgroup label={`⚾ Roster Oficial: ${currentTName} (${teamRoster.length} jugadores)`}>
+                              {sortedRoster.map(p => (
+                                <option key={p.id} value={p.id}>
+                                  {p.number ? `#${p.number.replace(/^#/, '')} - ` : ''}{p.name} {p.position ? `(${p.position})` : ''}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+
+                          {otherRoster.length > 0 && (
+                            <optgroup label={`🔄 Roster del otro equipo: ${otherTName} (${otherRoster.length} jugadores)`}>
+                              {sortedOther.map(p => (
+                                <option key={p.id} value={p.id}>
+                                  {p.number ? `#${p.number.replace(/^#/, '')} - ` : ''}{p.name} {p.position ? `(${p.position})` : ''}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                        </select>
+                      </div>
+
+                      {/* Verification Status Banner */}
+                      {matchedInTeam ? (
+                        <div className="flex items-center gap-2 text-[11px] font-bold text-emerald-800 dark:text-emerald-200 bg-emerald-100/70 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800/80 px-3 py-2 rounded-xl">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                          <span>
+                            Asignado a jugador de cédula: <strong className="underline">{matchedInTeam.name}</strong> {matchedInTeam.number ? `(#${matchedInTeam.number})` : ''} {matchedInTeam.position ? `• Pos: ${matchedInTeam.position}` : ''}
+                          </span>
+                        </div>
+                      ) : matchedInOther ? (
+                        <div className="flex items-center gap-2 text-[11px] font-bold text-blue-800 dark:text-blue-200 bg-blue-100/70 dark:bg-blue-950/50 border border-blue-300 dark:border-blue-800/80 px-3 py-2 rounded-xl">
+                          <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                          <span>
+                            Asignado a jugador de <strong>{otherTName}</strong>: {matchedInOther.name}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-start gap-2 text-[11px] font-medium text-amber-900 dark:text-amber-200 bg-amber-100/70 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800/80 px-3 py-2 rounded-xl">
+                          <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="font-bold">El nombre actual ("{adjustingModal.batter.name}") no coincide con el roster oficial.</p>
+                            <p className="text-[10px] opacity-90 mt-0.5">Elige arriba en el menú desplegable al jugador que le corresponden estos turnos al bat.</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {/* Row 1: Nombre & Dorsal & Posicion */}
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
                   <div className="sm:col-span-6 space-y-1">
@@ -1539,16 +1722,58 @@ export default function ScorebookModal({
                       {/* Player Name and Surname */}
                       <td className="py-2 px-3">
                         {isEditing ? (
-                          <input
-                            type="text"
-                            value={batter.name}
-                            onChange={(e) =>
-                              handleBatterChange(activeTeamIdx, bIdx, 'name', e.target.value)
-                            }
-                            className="w-full px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-900 dark:text-white"
-                          />
+                          <div className="space-y-1 min-w-[150px]">
+                            <select
+                              value={
+                                (() => {
+                                  const { roster: teamRoster, otherRoster } = getTeamRoster(activeTeamIdx);
+                                  const match = [...teamRoster, ...otherRoster].find(
+                                    p => (batter.playerId && p.id === batter.playerId) || normalizeStr(p.name) === normalizeStr(batter.name)
+                                  );
+                                  return match ? match.id : '';
+                                })()
+                              }
+                              onChange={(e) => {
+                                const selId = e.target.value;
+                                if (!selId) return;
+                                const { roster: teamRoster, otherRoster } = getTeamRoster(activeTeamIdx);
+                                const selPlayer = [...teamRoster, ...otherRoster].find(p => p.id === selId);
+                                if (selPlayer) {
+                                  handleBatterChange(activeTeamIdx, bIdx, 'name', selPlayer.name);
+                                  if (selPlayer.number) {
+                                    handleBatterChange(activeTeamIdx, bIdx, 'playerNumber', `#${selPlayer.number.replace(/^#/, '')}`);
+                                  }
+                                  if (selPlayer.position) {
+                                    handleBatterChange(activeTeamIdx, bIdx, 'position', selPlayer.position);
+                                  }
+                                  handleBatterChange(activeTeamIdx, bIdx, 'playerId' as any, selPlayer.id);
+                                }
+                              }}
+                              className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-indigo-300 dark:border-indigo-600 rounded-lg text-xs font-bold text-slate-900 dark:text-white"
+                            >
+                              <option value="">-- Asignar del roster --</option>
+                              {getTeamRoster(activeTeamIdx).roster.map(p => (
+                                <option key={p.id} value={p.id}>
+                                  {p.number ? `#${p.number.replace(/^#/, '')} ` : ''}{p.name}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              type="text"
+                              value={batter.name}
+                              onChange={(e) =>
+                                handleBatterChange(activeTeamIdx, bIdx, 'name', e.target.value)
+                              }
+                              placeholder="O nombre manual..."
+                              className="w-full px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-900 dark:text-white"
+                            />
+                          </div>
                         ) : (
-                          <div className="flex items-center gap-2">
+                          <div
+                            onClick={() => isJefe && handleStartAdjusting(activeTeamIdx, bIdx, batter)}
+                            className={`flex items-center gap-2 ${isJefe ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+                            title={isJefe ? "Click para editar turnos al bat y asignar jugador del roster" : undefined}
+                          >
                             {batter.playerNumber && (
                               <span className="text-[10px] font-black text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
                                 {batter.playerNumber.startsWith('#') || batter.playerNumber === '-' ? batter.playerNumber : `#${batter.playerNumber}`}
@@ -1787,15 +2012,19 @@ export default function ScorebookModal({
 
                       {/* Icono de Editar a la derecha de Notas Extrabase */}
                       <td className="py-2 px-2 text-center whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => handleStartAdjusting(activeTeamIdx, bIdx, batter)}
-                          className="inline-flex items-center justify-center p-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/80 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/80 rounded-xl text-xs font-bold transition-all shadow-sm hover:scale-110 active:scale-95 cursor-pointer group"
-                          title="Ajustar manualmente cualquier falla en la captura o algo no legible"
-                        >
-                          <Edit3 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 group-hover:rotate-12 transition-transform" />
-                          <span className="sr-only">Editar</span>
-                        </button>
+                        {isJefe ? (
+                          <button
+                            type="button"
+                            onClick={() => handleStartAdjusting(activeTeamIdx, bIdx, batter)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/80 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/80 rounded-xl text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 cursor-pointer group"
+                            title="Editar turnos al bat y asignar jugador del roster oficial"
+                          >
+                            <Edit3 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 group-hover:rotate-12 transition-transform" />
+                            <span className="text-[10px] font-black uppercase tracking-wider">Editar</span>
+                          </button>
+                        ) : (
+                          <span className="text-slate-300 dark:text-slate-700 text-xs">-</span>
+                        )}
                       </td>
 
                       {/* Delete button if in edit mode */}

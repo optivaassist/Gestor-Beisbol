@@ -249,6 +249,7 @@ export interface GamePitchingData {
 }
 
 export interface BoxScoreBatter {
+  playerId?: string;
   order?: number;
   playerNumber?: string;
   name: string; // Nombre y apellido del jugador

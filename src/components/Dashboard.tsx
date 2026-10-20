@@ -8,6 +8,7 @@ import ScorebookModal from './ScorebookModal';
 import ScorebookUploadModal from './ScorebookUploadModal';
 import ExcelScheduleModal from './ExcelScheduleModal';
 import ScheduleExportModal from './ScheduleExportModal';
+import ResultsExportModal from './ResultsExportModal';
 import TeamLogo from './TeamLogo';
 import {
   processScorebookFile,
@@ -37,6 +38,7 @@ export default function Dashboard({ userRole, userProfile, onSelectGame }: Dashb
   const [showExcelUploadModal, setShowExcelUploadModal] = useState(false);
   const [showScorebookUploadModal, setShowScorebookUploadModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showResultsExportModal, setShowResultsExportModal] = useState(false);
   const [uploadModalInitialGameId, setUploadModalInitialGameId] = useState<string | null>(null);
   const [uploadModalCategory, setUploadModalCategory] = useState<'batting' | 'pitching'>('batting');
   const [gameToDeleteBooks, setGameToDeleteBooks] = useState<Game | null>(null);
@@ -558,6 +560,16 @@ export default function Dashboard({ userRole, userProfile, onSelectGame }: Dashb
           <p className="text-slate-500 dark:text-slate-400 font-medium">Próximos y recientes encuentros de la liga por jornada.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          {/* Exportar Resultados a PDF */}
+          <button
+            onClick={() => setShowResultsExportModal(true)}
+            className="flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold py-3 px-5 rounded-2xl transition-all shadow-xl shadow-emerald-600/20 active:scale-95 cursor-pointer"
+            title="Exportar reporte de resultados a PDF por jornada con pitcher ganador, perdedor y HR"
+          >
+            <Trophy className="w-5 h-5" />
+            <span>Exportar Resultados (PDF)</span>
+          </button>
+
           {/* Exportar Rol a PDF */}
           <button
             onClick={() => setShowExportModal(true)}
@@ -668,6 +680,18 @@ export default function Dashboard({ userRole, userProfile, onSelectGame }: Dashb
                 <option key={j} value={j}>Jornada {j}</option>
               ))}
             </select>
+
+            {statusFilter === 'completed' && (
+              <button
+                type="button"
+                onClick={() => setShowResultsExportModal(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all shadow-md shadow-emerald-600/20 active:scale-95 cursor-pointer"
+                title="Descargar reporte en PDF de estos resultados"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Exportar PDF</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -958,6 +982,17 @@ export default function Dashboard({ userRole, userProfile, onSelectGame }: Dashb
       <ScheduleExportModal
         isOpen={showExportModal}
         onClose={() => setShowExportModal(false)}
+        games={games}
+        teams={teams}
+        seasons={seasons}
+        initialCategory={selectedCategory === 'Todas' ? 'All' : selectedCategory}
+        initialJornada={selectedJornada}
+      />
+
+      {/* Results PDF Export Modal */}
+      <ResultsExportModal
+        isOpen={showResultsExportModal}
+        onClose={() => setShowResultsExportModal(false)}
         games={games}
         teams={teams}
         seasons={seasons}

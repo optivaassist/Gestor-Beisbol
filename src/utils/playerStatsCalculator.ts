@@ -94,6 +94,13 @@ export const normalizeStr = (s: any): string => {
  */
 export function matchBatterToPlayer(player: Player, batters: any[]): any {
   if (!batters || batters.length === 0) return null;
+
+  // 0. Direct playerId match if the batter was explicitly assigned from roster
+  const directIdMatch = batters.find(b => b.playerId && b.playerId === player.id);
+  if (directIdMatch) {
+    return directIdMatch;
+  }
+
   const pNorm = normalizeStr(player.name);
   const pTokens = pNorm.split(' ').filter(t => t.length > 0);
   if (pTokens.length === 0) return null;

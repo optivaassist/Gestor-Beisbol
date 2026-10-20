@@ -77,14 +77,33 @@ export default function Selectivos() {
       const aPct = aGames === 0 ? 0 : a.wins / aGames;
       const bPct = bGames === 0 ? 0 : b.wins / bGames;
       
-      if (bPct !== aPct) return bPct - aPct;
+      // Criterio Principal: Porcentaje
+      if (Math.abs(bPct - aPct) > 0.0001) {
+        return bPct - aPct;
+      }
       
-      const h2h = getHeadToHead(a.id, b.id);
-      if (h2h !== 0) return -h2h;
+      // Criterio 1: Mayor cantidad de juegos ganados (Wins)
+      if (b.wins !== a.wins) {
+        return b.wins - a.wins;
+      }
       
+      // Criterio 2: Head-to-Head en caso de mismos ganados y perdidos
+      if (a.wins === b.wins && a.losses === b.losses) {
+        const h2h = getHeadToHead(a.id, b.id);
+        if (h2h !== 0) return -h2h;
+      }
+      
+      // Criterio 3: Diferencia de carreras
       const aDiff = (a.runsScored || 0) - (a.runsAllowed || 0);
       const bDiff = (b.runsScored || 0) - (b.runsAllowed || 0);
-      return bDiff - aDiff;
+      if (bDiff !== aDiff) return bDiff - aDiff;
+
+      // Criterio 4: Mayor cantidad de carreras anotadas
+      if ((b.runsScored || 0) !== (a.runsScored || 0)) {
+        return (b.runsScored || 0) - (a.runsScored || 0);
+      }
+
+      return a.name.localeCompare(b.name);
     });
 
   const filteredGames = games

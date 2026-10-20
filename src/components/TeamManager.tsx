@@ -94,7 +94,7 @@ export default function TeamManager({ userProfile }: TeamManagerProps) {
   };
 
   const canEdit = (category: Category) => {
-    if (!userProfile) return true;
+    if (!userProfile) return false;
     if (userProfile.role === 'admin' || userProfile.role === 'editor') return true;
     if (userProfile.role === 'jefe_categoria' && (!userProfile.category || userProfile.category === category)) return true;
     return false;
@@ -312,33 +312,37 @@ export default function TeamManager({ userProfile }: TeamManagerProps) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          {/* Main Requested Button 1: Subir Cédula */}
-          <button
-            onClick={() => {
-              setCedulaInitialTeamId(selectedTeam?.id || teams[0]?.id || null);
-              setShowCedulaModal(true);
-            }}
-            className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-bold py-2.5 px-4 rounded-2xl transition-all shadow-lg shadow-indigo-600/25 active:scale-95 cursor-pointer text-xs uppercase tracking-wider"
-          >
-            <Sparkles className="w-4 h-4" />
-            <span>Subir Cédula</span>
-          </button>
+          {/* Main Requested Button 1: Subir Cédula (Solo Admin / Jefe) */}
+          {Boolean(userProfile && (userProfile.role === 'admin' || userProfile.role === 'editor' || isJefe)) && (
+            <button
+              onClick={() => {
+                setCedulaInitialTeamId(selectedTeam?.id || teams[0]?.id || null);
+                setShowCedulaModal(true);
+              }}
+              className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-bold py-2.5 px-4 rounded-2xl transition-all shadow-lg shadow-indigo-600/25 active:scale-95 cursor-pointer text-xs uppercase tracking-wider"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>Subir Cédula</span>
+            </button>
+          )}
 
-          {/* Main Requested Button 2: Agregar o Quitar Jugadores */}
-          <button
-            onClick={() => {
-              const targetTeam = selectedTeam || teams[0];
-              if (targetTeam) {
-                setSelectedTeamId(targetTeam.id);
-                setRosterModalTeam(targetTeam);
-                setShowRosterModal(true);
-              }
-            }}
-            className="flex items-center gap-2 bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 dark:hover:bg-slate-600 text-white font-bold py-2.5 px-4 rounded-2xl transition-all shadow-md active:scale-95 cursor-pointer text-xs uppercase tracking-wider"
-          >
-            <UserPlus className="w-4 h-4" />
-            <span>Agregar o Quitar Jugadores</span>
-          </button>
+          {/* Main Requested Button 2: Agregar o Quitar Jugadores (Solo Admin / Jefe) */}
+          {Boolean(userProfile && (userProfile.role === 'admin' || userProfile.role === 'editor' || isJefe)) && (
+            <button
+              onClick={() => {
+                const targetTeam = selectedTeam || teams[0];
+                if (targetTeam) {
+                  setSelectedTeamId(targetTeam.id);
+                  setRosterModalTeam(targetTeam);
+                  setShowRosterModal(true);
+                }
+              }}
+              className="flex items-center gap-2 bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 dark:hover:bg-slate-600 text-white font-bold py-2.5 px-4 rounded-2xl transition-all shadow-md active:scale-95 cursor-pointer text-xs uppercase tracking-wider"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Agregar o Quitar Jugadores</span>
+            </button>
+          )}
 
           {/* Nuevo Equipo (Admin / Jefe) */}
           {(userProfile?.role === 'admin' || (isJefe && selectedCategory !== 'All' && canEdit(selectedCategory as Category))) && (
@@ -477,19 +481,21 @@ export default function TeamManager({ userProfile }: TeamManagerProps) {
                     <span>Ver Jugadores</span>
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedTeamId(team.id);
-                      setCedulaInitialTeamId(team.id);
-                      setShowCedulaModal(true);
-                    }}
-                    className="py-2.5 px-3 rounded-xl text-xs font-bold uppercase tracking-wider bg-slate-100 hover:bg-slate-200 dark:bg-slate-700/60 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 flex items-center justify-center gap-1 transition-all cursor-pointer"
-                    title={`Subir cédula para ${team.name}`}
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Cédula</span>
-                  </button>
+                  {canEdit(team.category) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedTeamId(team.id);
+                        setCedulaInitialTeamId(team.id);
+                        setShowCedulaModal(true);
+                      }}
+                      className="py-2.5 px-3 rounded-xl text-xs font-bold uppercase tracking-wider bg-slate-100 hover:bg-slate-200 dark:bg-slate-700/60 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 flex items-center justify-center gap-1 transition-all cursor-pointer"
+                      title={`Subir cédula para ${team.name}`}
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Cédula</span>
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -732,20 +738,25 @@ export default function TeamManager({ userProfile }: TeamManagerProps) {
       )}
 
       {/* Dedicated Team Roster and Cedula View Modal */}
-      <TeamRosterModal
-        isOpen={showRosterModal}
-        onClose={() => setShowRosterModal(false)}
-        team={rosterModalTeam || selectedTeam}
-        players={players}
-        games={games}
-        teams={teams}
-        onViewPlayerStats={(p) => setSelectedPlayer(p)}
-        onOpenCedulaUpload={(tId) => {
-          setCedulaInitialTeamId(tId);
-          setShowCedulaModal(true);
-        }}
-        canEdit={rosterModalTeam ? canEdit(rosterModalTeam.category) : true}
-      />
+      {showRosterModal && (rosterModalTeam || selectedTeam) && (
+        <TeamRosterModal
+          isOpen={showRosterModal}
+          onClose={() => {
+            setShowRosterModal(false);
+            setRosterModalTeam(null);
+          }}
+          team={rosterModalTeam || selectedTeam}
+          players={players}
+          games={games}
+          teams={teams}
+          onViewPlayerStats={(p) => setSelectedPlayer(p)}
+          onOpenCedulaUpload={(tId) => {
+            setCedulaInitialTeamId(tId);
+            setShowCedulaModal(true);
+          }}
+          canEdit={rosterModalTeam ? canEdit(rosterModalTeam.category) : Boolean(userProfile && (userProfile.role === 'admin' || userProfile.role === 'editor'))}
+        />
+      )}
 
       {/* Hidden File Input for Quick Logo Pick */}
       <input

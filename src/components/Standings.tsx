@@ -6,12 +6,50 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Trophy, TrendingUp, Hash, Activity, Shield } from 'lucide-react';
 import TeamLogo from './TeamLogo';
 
+import { matchTeamNameWithAliases } from '../utils/scorebookUtils';
+
 const normalizeStr = (str: any): string => {
   return String(str || '')
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .trim();
+};
+
+const isTeamMatch = (gameTeamId: string | undefined, gameTeamName: string | undefined, team: Team): boolean => {
+  if (gameTeamId && team.id && gameTeamId === team.id) return true;
+  if (!gameTeamName || !team.name) return false;
+  const gNorm = normalizeStr(gameTeamName);
+  const tNorm = normalizeStr(team.name);
+  if (gNorm === tNorm) return true;
+  return matchTeamNameWithAliases(gameTeamName, team.name);
+};
+
+const getGameScores = (g: Game) => {
+  const homeBoxR = g.boxScore?.teams?.find(t => t.teamType === 'home')?.totals?.r;
+  const awayBoxR = g.boxScore?.teams?.find(t => t.teamType === 'away')?.totals?.r;
+
+  let homeScore = 0;
+  let awayScore = 0;
+
+  if (g.score && (Number(g.score.home) > 0 || Number(g.score.away) > 0)) {
+    homeScore = Number(g.score.home) || 0;
+    awayScore = Number(g.score.away) || 0;
+  } else if (typeof homeBoxR === 'number' || typeof awayBoxR === 'number') {
+    homeScore = Number(homeBoxR) || 0;
+    awayScore = Number(awayBoxR) || 0;
+  } else if (g.score && (g.score.home !== undefined || g.score.away !== undefined)) {
+    homeScore = Number(g.score.home) || 0;
+    awayScore = Number(g.score.away) || 0;
+  }
+
+  const isFinished =
+    g.status === 'completed' ||
+    homeScore > 0 ||
+    awayScore > 0 ||
+    Boolean(g.boxScore && g.boxScore.teams && g.boxScore.teams.length > 0);
+
+  return { homeScore, awayScore, isFinished };
 };
 
 export default function Standings() {
@@ -51,13 +89,10 @@ export default function Standings() {
   // Compute standings dynamically from games officially recorded in «Partidos»
   const standingsTeams = useMemo(() => {
     return teams.map(team => {
-      const teamNorm = normalizeStr(team.name);
       const teamGames = games.filter(g => {
-        const isFinished = g.status === 'completed' || (g.boxScore && (g.score?.home > 0 || g.score?.away > 0));
+        const { isFinished } = getGameScores(g);
         if (!isFinished) return false;
-        const hMatch = g.homeTeamId === team.id || normalizeStr(g.homeTeamName) === teamNorm;
-        const aMatch = g.awayTeamId === team.id || normalizeStr(g.awayTeamName) === teamNorm;
-        return hMatch || aMatch;
+        return isTeamMatch(g.homeTeamId, g.homeTeamName, team) || isTeamMatch(g.awayTeamId, g.awayTeamName, team);
       });
 
       let calculatedWins = 0;
@@ -66,9 +101,8 @@ export default function Standings() {
       let calculatedRA = 0;
 
       teamGames.forEach(g => {
-        const isHome = g.homeTeamId === team.id || normalizeStr(g.homeTeamName) === teamNorm;
-        const homeScore = Number(g.score?.home ?? (g.boxScore?.teams?.find(t => t.teamType === 'home')?.totals?.r ?? 0));
-        const awayScore = Number(g.score?.away ?? (g.boxScore?.teams?.find(t => t.teamType === 'away')?.totals?.r ?? 0));
+        const { homeScore, awayScore } = getGameScores(g);
+        const isHome = isTeamMatch(g.homeTeamId, g.homeTeamName, team);
 
         const myScore = isHome ? homeScore : awayScore;
         const oppScore = isHome ? awayScore : homeScore;
@@ -83,12 +117,18 @@ export default function Standings() {
         }
       });
 
+      const hasGames = teamGames.length > 0;
+      const wins = hasGames ? Math.max(calculatedWins, team.wins || 0) : (team.wins || 0);
+      const losses = hasGames ? Math.max(calculatedLosses, team.losses || 0) : (team.losses || 0);
+      const runsScored = hasGames ? Math.max(calculatedRS, team.runsScored || 0) : (team.runsScored || 0);
+      const runsAllowed = hasGames ? Math.max(calculatedRA, team.runsAllowed || 0) : (team.runsAllowed || 0);
+
       return {
         ...team,
-        wins: calculatedWins,
-        losses: calculatedLosses,
-        runsScored: calculatedRS,
-        runsAllowed: calculatedRA,
+        wins,
+        losses,
+        runsScored,
+        runsAllowed,
       };
     });
   }, [teams, games]);
@@ -105,28 +145,36 @@ export default function Standings() {
     );
   }
 
-  const getHeadToHead = (teamAId: string, teamBId: string) => {
+  const getHeadToHead = (teamA: Team, teamB: Team): number => {
     const h2hGames = games.filter(g => {
-      const isFinished = g.status === 'completed' || (g.boxScore && (g.score?.home > 0 || g.score?.away > 0));
+      const { isFinished } = getGameScores(g);
       if (!isFinished) return false;
-      return (
-        (g.homeTeamId === teamAId && g.awayTeamId === teamBId) ||
-        (g.homeTeamId === teamBId && g.awayTeamId === teamAId)
-      );
+
+      const aIsHome = isTeamMatch(g.homeTeamId, g.homeTeamName, teamA);
+      const bIsAway = isTeamMatch(g.awayTeamId, g.awayTeamName, teamB);
+      const bIsHome = isTeamMatch(g.homeTeamId, g.homeTeamName, teamB);
+      const aIsAway = isTeamMatch(g.awayTeamId, g.awayTeamName, teamA);
+
+      return (aIsHome && bIsAway) || (bIsHome && aIsAway);
     });
-    
+
     let aWins = 0;
     let bWins = 0;
-    
+
     h2hGames.forEach(g => {
-      const aScore = g.homeTeamId === teamAId ? (g.score?.home ?? 0) : (g.score?.away ?? 0);
-      const bScore = g.homeTeamId === teamBId ? (g.score?.home ?? 0) : (g.score?.away ?? 0);
-      
+      const { homeScore, awayScore } = getGameScores(g);
+      const aIsHome = isTeamMatch(g.homeTeamId, g.homeTeamName, teamA);
+
+      const aScore = aIsHome ? homeScore : awayScore;
+      const bScore = aIsHome ? awayScore : homeScore;
+
       if (aScore > bScore) aWins++;
       else if (bScore > aScore) bWins++;
     });
-    
-    return aWins - bWins;
+
+    if (aWins > bWins) return 1; // Team A won head to head
+    if (bWins > aWins) return -1; // Team B won head to head
+    return 0; // Tied head to head
   };
 
   const filteredTeams = standingsTeams
@@ -136,20 +184,46 @@ export default function Standings() {
       const bGames = b.wins + b.losses;
       const aPct = aGames === 0 ? 0 : a.wins / aGames;
       const bPct = bGames === 0 ? 0 : b.wins / bGames;
-      
-      if (bPct !== aPct) return bPct - aPct;
-      
-      // Tie-breaker 1: Head-to-Head
-      const h2h = getHeadToHead(a.id, b.id);
-      if (h2h !== 0) return -h2h;
-      
-      // Tie-breaker 2: Run Differential
+
+      // Criterio Principal: Porcentaje de ganados vs perdidos
+      if (Math.abs(bPct - aPct) > 0.0001) {
+        return bPct - aPct;
+      }
+
+      // Criterio 1: En caso de mismo porcentaje, mayor cantidad de juegos ganados (Wins)
+      // Ejemplo: Yankees (2 ganados) va arriba de Dodgers (1 ganado) aunque ambos tengan 1.000
+      if (b.wins !== a.wins) {
+        return b.wins - a.wins;
+      }
+
+      // Criterio 2: En caso de mismos ganados y perdidos, Head-to-Head (Enfrentamiento directo)
+      // Pon arriba al que haya ganado el head-to-head
+      if (a.wins === b.wins && a.losses === b.losses) {
+        const h2h = getHeadToHead(a, b);
+        if (h2h !== 0) {
+          return h2h > 0 ? -1 : 1;
+        }
+      }
+
+      // Criterio 3: Diferencia de carreras (Run Differential = CA - CP)
       const aDiff = (a.runsScored || 0) - (a.runsAllowed || 0);
       const bDiff = (b.runsScored || 0) - (b.runsAllowed || 0);
-      if (bDiff !== aDiff) return bDiff - aDiff;
+      if (bDiff !== aDiff) {
+        return bDiff - aDiff;
+      }
 
-      // Tie-breaker 3: Runs Scored
-      return (b.runsScored || 0) - (a.runsScored || 0);
+      // Criterio 4: Mayor cantidad de carreras anotadas (CA)
+      if ((b.runsScored || 0) !== (a.runsScored || 0)) {
+        return (b.runsScored || 0) - (a.runsScored || 0);
+      }
+
+      // Criterio 5: Menor cantidad de carreras permitidas (CP)
+      if ((a.runsAllowed || 0) !== (b.runsAllowed || 0)) {
+        return (a.runsAllowed || 0) - (b.runsAllowed || 0);
+      }
+
+      // Criterio 6: Alfabético por nombre
+      return a.name.localeCompare(b.name);
     });
 
   return (

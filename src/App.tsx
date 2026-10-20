@@ -112,94 +112,6 @@ export default function App() {
     );
   }
 
-  const isPublicTab = ['dashboard', 'standings', 'leaders', 'selectivos'].includes(activeTab);
-
-  if (!user && !isPublicTab) {
-    return (
-      <div className={`min-h-screen flex flex-col items-center justify-center p-4 transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-900'}`}>
-        <div className="absolute top-6 right-6 z-50">
-          <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-2xl font-bold transition-all shadow-lg hover:scale-105 active:scale-95 ${
-              theme === 'dark' 
-                ? 'bg-indigo-600 text-white shadow-indigo-600/20' 
-                : 'bg-white text-indigo-600 border border-slate-200 shadow-xl shadow-slate-200/50'
-            }`}
-          >
-            {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            <span className="hidden sm:inline">{theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'}</span>
-          </button>
-        </div>
-
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="max-w-md w-full text-center space-y-8"
-        >
-          <div className="space-y-4">
-            <div className="w-24 h-24 bg-gradient-to-br from-indigo-600 to-indigo-600 rounded-3xl flex items-center justify-center mx-auto shadow-2xl shadow-indigo-600/30 rotate-3 hover:rotate-0 transition-transform duration-500">
-              <Trophy className="w-12 h-12 text-white" />
-            </div>
-            <div className="space-y-2">
-              <h1 className={`text-5xl font-black tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                Liga <span className="text-indigo-600">Béisbol</span>
-              </h1>
-              <p className="text-slate-500 dark:text-slate-400 text-lg">Gestiona tu liga local con anotación en tiempo real y estadísticas avanzadas.</p>
-            </div>
-          </div>
-          
-          <div className="space-y-4">
-            <button
-              onClick={async () => {
-                try {
-                  setError(null);
-                  await signIn();
-                } catch (err: any) {
-                  console.error("Error al iniciar sesión:", err);
-                  setError(err.message || "Error al iniciar sesión. Por favor, revisa el bloqueador de ventanas emergentes.");
-                }
-              }}
-              className={`w-full flex items-center justify-center gap-3 font-bold py-4 px-6 rounded-2xl transition-all ${
-                theme === 'dark' 
-                  ? 'bg-white text-slate-950 hover:bg-slate-200 shadow-xl shadow-white/5' 
-                  : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-xl shadow-indigo-600/20'
-              }`}
-            >
-              <LogIn className="w-5 h-5" />
-              Iniciar sesión con Google
-            </button>
-
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className={`w-full flex items-center justify-center gap-3 font-bold py-4 px-6 rounded-2xl transition-all border-2 ${
-                theme === 'dark' 
-                  ? 'bg-slate-900 text-white border-slate-800 hover:bg-slate-800' 
-                  : 'bg-white text-slate-900 border-slate-200 hover:bg-slate-50 shadow-sm'
-              }`}
-            >
-              <Trophy className="w-5 h-5 text-indigo-600" />
-              Ver Posiciones y Resultados
-            </button>
-          </div>
-
-          {error && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-500 text-sm font-medium"
-            >
-              {error}
-            </motion.div>
-          )}
-          
-          <div className="pt-12 border-t border-slate-200 dark:border-slate-800">
-            <p className="text-[10px] text-slate-400 uppercase tracking-[0.2em] font-black">Powered by AI Studio Build</p>
-          </div>
-        </motion.div>
-      </div>
-    );
-  }
-
   return (
     <div className={`min-h-screen flex flex-col transition-colors duration-500 ${theme === 'dark' ? 'bg-slate-950 text-white' : 'bg-indigo-50/30 text-slate-900'}`}>
       {/* Mobile Header */}
@@ -211,16 +123,37 @@ export default function App() {
             </div>
             <span className="font-black text-lg tracking-tight uppercase">Liga Béisbol</span>
           </div>
-          <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
-              theme === 'dark' 
-                ? 'bg-indigo-600 text-white' 
-                : 'bg-slate-100 text-indigo-600 border border-slate-200'
-            }`}
-          >
-            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </button>
+          <div className="flex items-center gap-2">
+            {user ? (
+              <button
+                onClick={logOut}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-500/10 text-rose-500 border border-rose-500/20 active:scale-95 transition-all"
+                title="Cerrar Sesión"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Salir</span>
+              </button>
+            ) : (typeof window !== 'undefined' && (window.location.search.includes('admin') || window.location.search.includes('login'))) ? (
+              <button
+                onClick={signIn}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all"
+                title="Acceso Administrador"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Acceso Admin</span>
+              </button>
+            ) : null}
+            <button
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
+                theme === 'dark' 
+                  ? 'bg-slate-800 text-white' 
+                  : 'bg-slate-100 text-indigo-600 border border-slate-200'
+              }`}
+            >
+              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
+          </div>
         </header>
       )}
 
@@ -343,7 +276,7 @@ export default function App() {
                   />
                   <button
                     onClick={logOut}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer ${
                       theme === 'dark'
                         ? 'text-slate-400 hover:bg-rose-500/10 hover:text-rose-500'
                         : 'text-slate-600 hover:bg-rose-50 hover:text-rose-600'
@@ -353,15 +286,16 @@ export default function App() {
                     <span className="hidden lg:inline font-medium">Cerrar Sesión</span>
                   </button>
                 </>
-              ) : (
+              ) : (typeof window !== 'undefined' && (window.location.search.includes('admin') || window.location.search.includes('login'))) ? (
                 <button
                   onClick={signIn}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 font-bold hover:bg-indigo-50 dark:hover:bg-slate-800 transition-all border border-slate-200 dark:border-slate-800 cursor-pointer shadow-sm active:scale-95"
+                  title="Acceso para administradores y jefes de categoría"
                 >
-                  <LogIn className="w-5 h-5" />
-                  <span className="hidden lg:inline">Iniciar Sesión</span>
+                  <LogIn className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                  <span className="hidden lg:inline text-xs uppercase tracking-wider font-black">Acceso Admin</span>
                 </button>
-              )}
+              ) : null}
             </div>
           </nav>
         )}
@@ -413,7 +347,7 @@ export default function App() {
           {activeTab === 'import' && profile?.role === 'admin' && (
             <ExcelUploader />
           )}
-          {activeTab === 'settings' && (
+          {activeTab === 'settings' && user && (
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
