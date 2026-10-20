@@ -80,7 +80,7 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
       setTeams(loadedTeams);
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'teams');
+      console.error("Error fetching teams in TeamsContext:", error);
       setLoading(false);
     });
 

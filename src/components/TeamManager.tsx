@@ -119,17 +119,24 @@ export default function TeamManager({ userProfile }: TeamManagerProps) {
       if (!selectedTeamId && loadedTeams.length > 0) {
         setSelectedTeamId(loadedTeams[0].id);
       }
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'teams'));
+    }, (error) => {
+      console.error("Error cargando equipos:", error);
+      setLoading(false);
+    });
 
     const playersQuery = query(collection(db, 'players'), orderBy('name', 'asc'));
     const unsubscribePlayers = onSnapshot(playersQuery, (snapshot) => {
       setPlayers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Player)));
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'players'));
+    }, (error) => {
+      console.error("Error cargando jugadores:", error);
+    });
 
     const gamesQuery = query(collection(db, 'games'));
     const unsubscribeGames = onSnapshot(gamesQuery, (snapshot) => {
       setGames(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Game)));
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'games'));
+    }, (error) => {
+      console.error("Error cargando partidos:", error);
+    });
 
     return () => {
       unsubscribeTeams();

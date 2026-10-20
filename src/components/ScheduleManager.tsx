@@ -101,12 +101,16 @@ export default function ScheduleManager({
           }
         });
       }
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'teams'));
+    }, (error) => {
+      console.error("Error fetching teams in ScheduleManager:", error);
+    });
 
     const seasonsQuery = query(collection(db, 'seasons'));
     const unsubscribeSeasons = onSnapshot(seasonsQuery, (snapshot) => {
       setSeasons(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Season)));
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'seasons'));
+    }, (error) => {
+      console.error("Error fetching seasons in ScheduleManager:", error);
+    });
 
     const gamesQuery = query(collection(db, 'games'), orderBy('date', 'asc'));
     const unsubscribeGames = onSnapshot(gamesQuery, (snapshot) => {
@@ -141,7 +145,10 @@ export default function ScheduleManager({
           }
         });
       }
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'games'));
+    }, (error) => {
+      console.error("Error fetching games in ScheduleManager:", error);
+      setLoading(false);
+    });
 
     return () => {
       unsubscribeTeams();

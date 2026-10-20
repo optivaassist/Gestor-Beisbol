@@ -133,15 +133,6 @@ export default function App() {
                 <LogOut className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Salir</span>
               </button>
-            ) : (typeof window !== 'undefined' && (window.location.search.includes('admin') || window.location.search.includes('login'))) ? (
-              <button
-                onClick={signIn}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 active:scale-95 transition-all"
-                title="Acceso Administrador"
-              >
-                <LogIn className="w-3.5 h-3.5" />
-                <span>Acceso Admin</span>
-              </button>
             ) : null}
             <button
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
@@ -286,15 +277,6 @@ export default function App() {
                     <span className="hidden lg:inline font-medium">Cerrar Sesión</span>
                   </button>
                 </>
-              ) : (typeof window !== 'undefined' && (window.location.search.includes('admin') || window.location.search.includes('login'))) ? (
-                <button
-                  onClick={signIn}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 font-bold hover:bg-indigo-50 dark:hover:bg-slate-800 transition-all border border-slate-200 dark:border-slate-800 cursor-pointer shadow-sm active:scale-95"
-                  title="Acceso para administradores y jefes de categoría"
-                >
-                  <LogIn className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                  <span className="hidden lg:inline text-xs uppercase tracking-wider font-black">Acceso Admin</span>
-                </button>
               ) : null}
             </div>
           </nav>
