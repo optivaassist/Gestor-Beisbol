@@ -77,10 +77,7 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == 'viewer';
-      allow update: if (isOwner(userId) || isAdmin()) && isValidUser(request.resource.data) &&
-                      (isOwner(userId) && !isAdmin() ? request.resource.data.role == resource.data.role : true);
+      allow read, write: if true;
     }
 
     match /teams/{teamId} {

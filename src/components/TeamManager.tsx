@@ -93,15 +93,10 @@ export default function TeamManager({ userProfile }: TeamManagerProps) {
     }
   };
 
-  const canEdit = (category: Category) => {
-    if (!userProfile) return false;
-    if (userProfile.role === 'admin' || userProfile.role === 'editor') return true;
-    if (userProfile.role === 'jefe_categoria' && (!userProfile.category || userProfile.category === category)) return true;
-    return false;
-  };
+  const canEdit = (_category?: Category) => true;
 
-  const isJefe = userProfile?.role === 'jefe_categoria';
-  const userCategory = userProfile?.category;
+  const isJefe = false;
+  const userCategory = undefined;
 
   useEffect(() => {
     if (isJefe && userCategory) {

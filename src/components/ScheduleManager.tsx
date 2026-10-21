@@ -58,15 +58,10 @@ export default function ScheduleManager({
   const [isCustomEditField, setIsCustomEditField] = useState(false);
   const [isCustomEditTime, setIsCustomEditTime] = useState(false);
 
-  const canEdit = (category: Category) => {
-    if (!userProfile) return false;
-    if (userProfile.role === 'admin') return true;
-    if (userProfile.role === 'jefe_categoria' && userProfile.category === category) return true;
-    return false;
-  };
+  const canEdit = (_category?: Category) => true;
 
-  const isJefe = userProfile?.role === 'jefe_categoria';
-  const userCategory = userProfile?.category;
+  const isJefe = false;
+  const userCategory = undefined;
 
   const normalizeStr = (str: any): string => {
     return String(str || '')

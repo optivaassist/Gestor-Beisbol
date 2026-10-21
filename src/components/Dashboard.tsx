@@ -438,15 +438,7 @@ export default function Dashboard({ userRole, userProfile, onSelectGame }: Dashb
     }
   };
 
-  const canEditGame = (g: Game) => {
-    if (userRole === 'admin' || userRole === 'editor') return true;
-    if (isJefe) {
-      const home = teams.find(t => t.id === g.homeTeamId);
-      const cat = g.category || home?.category;
-      if (!userProfile?.category || userProfile?.category === cat) return true;
-    }
-    return false;
-  };
+  const canEditGame = (_g?: Game) => true;
 
   const handleOpenEditGame = (game: Game) => {
     setEditingGame(game);
