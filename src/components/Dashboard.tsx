@@ -19,6 +19,7 @@ import {
   getUploadedSheetsCount,
   hasUploadedBooks,
   saveScorebookFile,
+  deleteGameScorebookFiles,
   sanitizeScorebooksForMainDoc
 } from '../utils/scorebookUtils';
 
@@ -341,6 +342,9 @@ export default function Dashboard({ userRole, userProfile, onSelectGame }: Dashb
     if (!gameToDeleteBooks) return;
     setDeletingBooks(true);
     try {
+      // 1. Delete actual files from subcollection games/{id}/scorebook_files
+      await deleteGameScorebookFiles(gameToDeleteBooks.id, sheetKey);
+
       if (sheetKey && gameToDeleteBooks.scorebooks) {
         // Delete a specific sheet from the 4 sheets
         const updatedScorebooks = { ...gameToDeleteBooks.scorebooks };
@@ -357,13 +361,21 @@ export default function Dashboard({ userRole, userProfile, onSelectGame }: Dashb
           updates.bookUploadedBy = null;
           updates.boxScore = null;
           updates.pitchingBoxScore = null;
+          updates.winningPitcher = null;
+          updates.losingPitcher = null;
+          updates.savePitcher = null;
+          updates.homeRuns = null;
         } else if (sheetKey === 'awayBatting' || sheetKey === 'homeBatting') {
           if (!updatedScorebooks.awayBatting && !updatedScorebooks.homeBatting) {
             updates.boxScore = null;
+            updates.homeRuns = null;
           }
         } else if (sheetKey === 'awayPitching' || sheetKey === 'homePitching') {
           if (!updatedScorebooks.awayPitching && !updatedScorebooks.homePitching) {
             updates.pitchingBoxScore = null;
+            updates.winningPitcher = null;
+            updates.losingPitcher = null;
+            updates.savePitcher = null;
           }
         }
         await updateDoc(doc(db, 'games', gameToDeleteBooks.id), cleanFirestoreData(updates));
@@ -378,9 +390,13 @@ export default function Dashboard({ userRole, userProfile, onSelectGame }: Dashb
           boxScore: null,
           pitchingBoxScore: null,
           scorebooks: null,
+          winningPitcher: null,
+          losingPitcher: null,
+          savePitcher: null,
+          homeRuns: null,
         });
       }
-      setUploadSuccessMessage('Libro(s) de anotación borrado(s) exitosamente.');
+      setUploadSuccessMessage('Libro(s) de anotación y estadísticas borrados exitosamente.');
       setTimeout(() => setUploadSuccessMessage(null), 4000);
       setGameToDeleteBooks(null);
     } catch (err) {

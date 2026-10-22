@@ -1,5 +1,5 @@
 import { db } from '../firebase';
-import { collection, getDocs, query, where, doc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, getDoc, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { Player, Team, GameBoxScoreData, TeamBoxScore, BoxScoreBatter, GamePitchingData, TeamPitchingBoxScore, PitcherBoxScore, Game, GameScorebooks, ScorebookSheetRecord } from '../types';
 
 export const normalizeStr = (s: any): string => {
@@ -329,29 +329,43 @@ export function matchTeamNameWithAliases(extracted: string, official: string): b
   const offNorm = normalizeStr(official).replace(/[^a-z0-9]/g, '');
   if (!extNorm || !offNorm) return false;
 
-  // Exact or direct substring
+  // Exact match
   if (extNorm === offNorm) return true;
-  if (extNorm.includes(offNorm) || offNorm.includes(extNorm)) return true;
+
+  // Direct substring match only for long names (>= 5 letters) to avoid 2-letter collisions
+  if (extNorm.length >= 5 && offNorm.length >= 5) {
+    if (extNorm.includes(offNorm) || offNorm.includes(extNorm)) return true;
+  }
+
+  const isMatchAlias = (targetStr: string, aliasStr: string): boolean => {
+    // Short aliases (e.g. "as", "sd", "la", "ny", "tb", "kc", "sf", "oak", "ast")
+    // must be exact matches or distinct tokens, NEVER substrings of words like "astros"!
+    if (aliasStr.length <= 3) {
+      return targetStr === aliasStr;
+    }
+    return targetStr === aliasStr || targetStr.includes(aliasStr);
+  };
 
   // Check alias dictionary
   for (const [key, aliases] of Object.entries(TEAM_ALIASES_MAP)) {
     const keyNorm = normalizeStr(key).replace(/[^a-z0-9]/g, '');
-    const isOfficialThisKey = offNorm.includes(keyNorm) || aliases.some(a => offNorm.includes(normalizeStr(a).replace(/[^a-z0-9]/g, '')));
+    const isOfficialThisKey =
+      offNorm === keyNorm ||
+      (keyNorm.length >= 5 && offNorm.includes(keyNorm)) ||
+      aliases.some(a => isMatchAlias(offNorm, normalizeStr(a).replace(/[^a-z0-9]/g, '')));
+
     if (isOfficialThisKey) {
-      if (extNorm.includes(keyNorm) || keyNorm.includes(extNorm)) return true;
-      if (aliases.some(a => {
-        const aNorm = normalizeStr(a).replace(/[^a-z0-9]/g, '');
-        return extNorm === aNorm || extNorm.includes(aNorm) || aNorm.includes(extNorm);
-      })) {
+      if (extNorm === keyNorm || (keyNorm.length >= 5 && extNorm.includes(keyNorm))) return true;
+      if (aliases.some(a => isMatchAlias(extNorm, normalizeStr(a).replace(/[^a-z0-9]/g, '')))) {
         return true;
       }
     }
   }
 
-  // Multi-word token overlap
-  const extWords = normalizeStr(extracted).split(/\s+/).filter(w => w.length >= 3);
-  const offWords = normalizeStr(official).split(/\s+/).filter(w => w.length >= 3);
-  if (extWords.some(ew => offWords.some(ow => ew === ow || ew.startsWith(ow) || ow.startsWith(ew)))) {
+  // Multi-word token overlap (exact word match of words with >= 4 letters)
+  const extWords = normalizeStr(extracted).split(/\s+/).filter(w => w.length >= 4);
+  const offWords = normalizeStr(official).split(/\s+/).filter(w => w.length >= 4);
+  if (extWords.some(ew => offWords.some(ow => ew === ow))) {
     return true;
   }
 
@@ -439,9 +453,16 @@ export function parseBattingPerformance(
 
   // HR detection: check explicit field or text in line / notes
   const hasHrText = /(\bhr\b|\bjonron\b|\bjonrón\b|\bcuadrangular\b)/i.test(combined);
-  let hr = Number.isFinite(Number(rawHr)) && Number(rawHr) > 0 ? Number(rawHr) : (hasHrText ? 1 : 0);
+  let hr = Number.isFinite(Number(rawHr)) && Number(rawHr) > 0 ? Number(rawHr) : 0;
 
-  // If HR is detected, it must count towards hits and at-bats
+  // In baseball, a Home Run is inherently a HIT!
+  // If a player has 0 hits (e.g. "de 3-0", "4-0"), they CANNOT have hit a home run,
+  // unless explicitly recorded with rawHr > 0.
+  if (hr === 0 && hasHrText && h > 0) {
+    hr = 1;
+  }
+
+  // If HR is explicitly recorded, hits must be at least the HR count
   if (hr > 0) {
     h = Math.max(h, hr);
     ab = Math.max(ab, h);
@@ -899,6 +920,30 @@ export async function loadScorebookFile(gameId: string, sheetKey: string = 'defa
   } catch (err) {
     console.warn(`Could not load scorebook file from subcollection:`, err);
     return null;
+  }
+}
+
+/**
+ * Deletes all scorebook files or a specific sheet file from subcollection games/{gameId}/scorebook_files
+ * so no residual images, thumbnails or documents remain in Firestore memory.
+ */
+export async function deleteGameScorebookFiles(gameId: string, sheetKey?: string): Promise<void> {
+  try {
+    if (sheetKey) {
+      await deleteDoc(doc(db, 'games', gameId, 'scorebook_files', sheetKey));
+      try {
+        await deleteDoc(doc(db, 'games', gameId, 'scorebook_files', 'default'));
+      } catch (_) {}
+    } else {
+      const snap = await getDocs(collection(db, 'games', gameId, 'scorebook_files'));
+      if (!snap.empty) {
+        const batch = writeBatch(db);
+        snap.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+    }
+  } catch (err) {
+    console.warn(`Could not delete scorebook file(s) from subcollection:`, err);
   }
 }
 

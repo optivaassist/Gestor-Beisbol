@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, Plus, Minus, Trophy, History, Users, Activity, Play as PlayIcon, Circle, GripVertical, UserPlus, UserMinus, Shield, Home, BookOpen, Upload, Eye, X, Download, FileCheck, Loader2, Table as TableIcon, AlertCircle, Trash2 } from 'lucide-react';
 import ScorebookModal from './ScorebookModal';
 import TeamLogo from './TeamLogo';
-import { cleanFirestoreData, hasUploadedBooks, getUploadedSheetsCount, reconcileBoxScore, reconcilePitchingBoxScore, mergeBoxScores, mergePitchingBoxScores, processScorebookFile, saveScorebookFile, sanitizeScorebooksForMainDoc } from '../utils/scorebookUtils';
+import { cleanFirestoreData, hasUploadedBooks, getUploadedSheetsCount, reconcileBoxScore, reconcilePitchingBoxScore, mergeBoxScores, mergePitchingBoxScores, processScorebookFile, saveScorebookFile, deleteGameScorebookFiles, sanitizeScorebooksForMainDoc } from '../utils/scorebookUtils';
 import {
   DndContext,
   closestCenter,
@@ -68,8 +68,9 @@ export default function Scorekeeper({ gameId, userRole, userProfile, onBack, ini
 
   const handleDeleteBookInScorekeeper = async () => {
     if (!game) return;
-    if (window.confirm('¿Deseas borrar los libros de anotación de este partido?')) {
+    if (window.confirm('¿Deseas borrar los libros de anotación y estadísticas de este partido?')) {
       try {
+        await deleteGameScorebookFiles(game.id);
         await updateDoc(doc(db, 'games', game.id), cleanFirestoreData({
           bookImageUrl: '',
           bookFileName: '',
@@ -79,6 +80,10 @@ export default function Scorekeeper({ gameId, userRole, userProfile, onBack, ini
           boxScore: null,
           pitchingBoxScore: null,
           scorebooks: null,
+          winningPitcher: null,
+          losingPitcher: null,
+          savePitcher: null,
+          homeRuns: null,
         }));
       } catch (err) {
         console.error('Error deleting book in scorekeeper:', err);

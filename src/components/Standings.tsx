@@ -17,7 +17,10 @@ const normalizeStr = (str: any): string => {
 };
 
 const isTeamMatch = (gameTeamId: string | undefined, gameTeamName: string | undefined, team: Team): boolean => {
-  if (gameTeamId && team.id && gameTeamId === team.id) return true;
+  // If both IDs exist, they are the unique identifier of the team
+  if (gameTeamId && team.id) {
+    return gameTeamId === team.id;
+  }
   if (!gameTeamName || !team.name) return false;
   const gNorm = normalizeStr(gameTeamName);
   const tNorm = normalizeStr(team.name);
@@ -118,10 +121,10 @@ export default function Standings() {
       });
 
       const hasGames = teamGames.length > 0;
-      const wins = hasGames ? Math.max(calculatedWins, team.wins || 0) : (team.wins || 0);
-      const losses = hasGames ? Math.max(calculatedLosses, team.losses || 0) : (team.losses || 0);
-      const runsScored = hasGames ? Math.max(calculatedRS, team.runsScored || 0) : (team.runsScored || 0);
-      const runsAllowed = hasGames ? Math.max(calculatedRA, team.runsAllowed || 0) : (team.runsAllowed || 0);
+      const wins = hasGames ? calculatedWins : (team.wins || 0);
+      const losses = hasGames ? calculatedLosses : (team.losses || 0);
+      const runsScored = hasGames ? calculatedRS : (team.runsScored || 0);
+      const runsAllowed = hasGames ? calculatedRA : (team.runsAllowed || 0);
 
       return {
         ...team,

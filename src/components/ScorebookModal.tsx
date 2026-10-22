@@ -26,9 +26,11 @@ import {
   FileSpreadsheet,
   Users,
   CheckCircle2,
-  Award
+  Award,
+  ArrowLeftRight,
+  Ban
 } from 'lucide-react';
-import { fetchTeamRoster, reconcileBoxScore, mergeBoxScores, processScorebookFile, cleanFirestoreData, loadScorebookFile, hasUploadedBooks, getUploadedSheetsCount, normalizeStr } from '../utils/scorebookUtils';
+import { fetchTeamRoster, reconcileBoxScore, mergeBoxScores, processScorebookFile, cleanFirestoreData, loadScorebookFile, deleteGameScorebookFiles, hasUploadedBooks, getUploadedSheetsCount, normalizeStr } from '../utils/scorebookUtils';
 
 interface ScorebookModalProps {
   game: Game;
@@ -76,6 +78,12 @@ export default function ScorebookModal({
     teamIdx: number;
     batterIdx: number;
     batter: BoxScoreBatter;
+    originalIdentity?: {
+      playerId?: string;
+      name: string;
+      playerNumber?: string;
+      position?: string;
+    };
   } | null>(null);
   const [adjustSuccessToast, setAdjustSuccessToast] = useState<string | null>(null);
   const [savingAdjust, setSavingAdjust] = useState(false);
@@ -148,6 +156,10 @@ export default function ScorebookModal({
   const handleDeleteBook = async () => {
     setDeleting(true);
     try {
+      // 1. Delete all subcollection files in games/{game.id}/scorebook_files
+      await deleteGameScorebookFiles(game.id);
+
+      // 2. Completely clean the game document
       await updateDoc(doc(db, 'games', game.id), {
         bookImageUrl: '',
         bookFileName: '',
@@ -157,8 +169,14 @@ export default function ScorebookModal({
         boxScore: null,
         pitchingBoxScore: null,
         scorebooks: null,
+        winningPitcher: null,
+        losingPitcher: null,
+        savePitcher: null,
+        homeRuns: null,
       });
+
       setLoadedFileUrl(null);
+      setEditableBoxScore(null);
       onClose();
     } catch (err: any) {
       console.error('Error deleting scorebook:', err);
@@ -367,6 +385,72 @@ export default function ScorebookModal({
     return { ab, r, h, rbi, bb, so, hr, avg: avgVal };
   };
 
+  // Direct assignment from roster with automatic player swap to prevent duplicates
+  const handleAssignPlayerWithSwap = (
+    teamIdx: number,
+    batterIdx: number,
+    selectedPlayer: { id: string; name: string; number?: string; position?: string }
+  ) => {
+    if (!editableBoxScore) return;
+    const newTeams = [...editableBoxScore.teams];
+    const targetTeam = { ...newTeams[teamIdx] };
+    const targetBatters = [...targetTeam.batters];
+    const currentBatter = targetBatters[batterIdx];
+    if (!currentBatter) return;
+
+    // Original identity of the row being edited
+    const originalIdentity = {
+      playerId: currentBatter.playerId || '',
+      name: currentBatter.name,
+      playerNumber: currentBatter.playerNumber || '',
+      position: currentBatter.position || '',
+    };
+
+    // Find if another row in the same team has selectedPlayer
+    const otherIdx = targetBatters.findIndex(
+      (b, idx) =>
+        idx !== batterIdx &&
+        ((selectedPlayer.id && b.playerId === selectedPlayer.id) ||
+          normalizeStr(b.name) === normalizeStr(selectedPlayer.name))
+    );
+
+    const formattedNumber = selectedPlayer.number
+      ? (selectedPlayer.number.startsWith('#') ? selectedPlayer.number : `#${selectedPlayer.number}`)
+      : currentBatter.playerNumber;
+
+    if (otherIdx !== -1) {
+      // SWAP: other row takes currentBatter's original identity, keeping all its existing stats intact
+      const otherBatter = targetBatters[otherIdx];
+      targetBatters[otherIdx] = {
+        ...otherBatter,
+        playerId: originalIdentity.playerId,
+        name: originalIdentity.name,
+        playerNumber: originalIdentity.playerNumber,
+        position: originalIdentity.position || otherBatter.position,
+      };
+      setAdjustSuccessToast(`¡Intercambio realizado! ${selectedPlayer.name} y ${originalIdentity.name} intercambiaron posiciones conservando sus estadísticas.`);
+      setTimeout(() => setAdjustSuccessToast(null), 4000);
+    }
+
+    // Current row takes selectedPlayer's identity, keeping all its stats intact
+    targetBatters[batterIdx] = {
+      ...currentBatter,
+      playerId: selectedPlayer.id,
+      name: selectedPlayer.name,
+      playerNumber: formattedNumber,
+      position: selectedPlayer.position || currentBatter.position,
+    };
+
+    targetTeam.batters = targetBatters;
+    targetTeam.totals = recalculateTeamTotals(targetTeam);
+    newTeams[teamIdx] = targetTeam;
+
+    setEditableBoxScore({
+      ...editableBoxScore,
+      teams: newTeams,
+    });
+  };
+
   const handleBatterChange = (
     teamIdx: number,
     batterIdx: number,
@@ -404,35 +488,70 @@ export default function ScorebookModal({
       }
     }
 
-    if (field === 'battingLine') {
-      const match = String(updatedValue || '').match(/(?:de\s+)?(\d+)\s*(?:[xX\-\/\*:\.]|por|a)\s*(\d+)/i);
-      if (match) {
-        let parsedAb = parseInt(match[1], 10) || 0;
-        let parsedH = parseInt(match[2], 10) || 0;
-        if (parsedH > parsedAb) {
-          const temp = parsedAb;
-          parsedAb = parsedH;
-          parsedH = temp;
+    if (field === 'name') {
+      const typedName = String(value || '').trim();
+      updatedBatter.name = typedName;
+      if (typedName) {
+        // If the typed name exactly matches another row in this team, swap them!
+        const otherIdx = targetBatters.findIndex(
+          (b, idx) => idx !== batterIdx && normalizeStr(b.name) === normalizeStr(typedName)
+        );
+        if (otherIdx !== -1) {
+          const originalName = targetBatters[batterIdx].name;
+          const otherBatter = targetBatters[otherIdx];
+          targetBatters[otherIdx] = {
+            ...otherBatter,
+            name: originalName,
+          };
+          setAdjustSuccessToast(`¡Intercambio realizado! ${typedName} y ${originalName} intercambiaron posiciones.`);
+          setTimeout(() => setAdjustSuccessToast(null), 4000);
         }
-        updatedBatter.ab = parsedAb;
-        updatedBatter.h = parsedH;
-      } else if (String(updatedValue || '').toLowerCase().includes('dato no disponible') || String(updatedValue || '').toLowerCase().includes('no disponible')) {
+      }
+    }
+
+    if (field === 'battingLine') {
+      const strVal = String(updatedValue || '').trim();
+      const lower = strVal.toLowerCase();
+
+      if (lower.includes('no jug')) {
+        updatedBatter.battingLine = 'No jugó';
+        updatedBatter.order = 0;
+        updatedBatter.ab = 0;
+        updatedBatter.h = 0;
+        updatedBatter.r = 0;
+        updatedBatter.rbi = 0;
+        updatedBatter.bb = 0;
+        updatedBatter.so = 0;
+        updatedBatter.hr = 0;
+        updatedBatter.avg = '.000';
+        updatedBatter.extraNotes = '';
+      } else if (lower.includes('dato no disponible') || lower.includes('no disponible')) {
         updatedBatter.ab = 0;
         updatedBatter.h = 0;
         updatedBatter.avg = '.000';
         updatedBatter.battingLine = 'Dato no disponible';
-      } else if (String(updatedValue || '').toLowerCase().includes('no legible') || String(updatedValue || '').toLowerCase().includes('ilegible')) {
+      } else if (lower.includes('no legible') || lower.includes('ilegible')) {
         updatedBatter.ab = 0;
         updatedBatter.h = 0;
         updatedBatter.avg = '.000';
         updatedBatter.battingLine = 'No legible';
-      } else if (String(updatedValue || '').toLowerCase().includes('no jug')) {
-        updatedBatter.ab = 0;
-        updatedBatter.h = 0;
-        updatedBatter.hr = 0;
-        updatedBatter.avg = '.000';
-        updatedBatter.order = 0;
-        updatedBatter.battingLine = 'No jugó';
+      } else {
+        const match = strVal.match(/(?:de\s+)?(\d+)\s*(?:[xX\-\/\*:\.]|por|a)\s*(\d+)/i);
+        if (match) {
+          let parsedAb = parseInt(match[1], 10) || 0;
+          let parsedH = parseInt(match[2], 10) || 0;
+          if (parsedH > parsedAb) {
+            const temp = parsedAb;
+            parsedAb = parsedH;
+            parsedH = temp;
+          }
+          updatedBatter.ab = parsedAb;
+          updatedBatter.h = parsedH;
+          updatedBatter.avg = parsedAb > 0 ? (parsedH / parsedAb).toFixed(3).replace(/^0\./, '.') : '.000';
+          if (!updatedBatter.order || updatedBatter.order === 0) {
+            updatedBatter.order = batterIdx + 1;
+          }
+        }
       }
     }
 
@@ -491,6 +610,12 @@ export default function ScorebookModal({
       teamIdx,
       batterIdx,
       batter: { ...batter },
+      originalIdentity: {
+        playerId: batter.playerId || '',
+        name: batter.name,
+        playerNumber: batter.playerNumber || '',
+        position: batter.position || '',
+      },
     });
   };
 
@@ -499,35 +624,49 @@ export default function ScorebookModal({
     const cur = { ...adjustingModal.batter };
 
     if (field === 'battingLine') {
-      cur.battingLine = value;
-      const match = String(value || '').match(/(?:de\s+)?(\d+)\s*(?:[xX\-\/\*:\.]|por|a)\s*(\d+)/i);
-      if (match) {
-        let parsedAb = parseInt(match[1], 10) || 0;
-        let parsedH = parseInt(match[2], 10) || 0;
-        if (parsedH > parsedAb) {
-          const temp = parsedAb;
-          parsedAb = parsedH;
-          parsedH = temp;
-        }
-        cur.ab = parsedAb;
-        cur.h = parsedH;
-        cur.avg = parsedAb > 0 ? (parsedH / parsedAb).toFixed(3).replace(/^0\./, '.') : '.000';
-      } else if (String(value || '').toLowerCase().includes('dato no disponible') || String(value || '').toLowerCase().includes('no disponible')) {
+      const strVal = String(value || '').trim();
+      const lower = strVal.toLowerCase();
+
+      if (lower.includes('no jug')) {
+        cur.battingLine = 'No jugó';
+        cur.order = 0;
+        cur.ab = 0;
+        cur.h = 0;
+        cur.r = 0;
+        cur.rbi = 0;
+        cur.bb = 0;
+        cur.so = 0;
+        cur.hr = 0;
+        cur.avg = '.000';
+        cur.extraNotes = '';
+      } else if (lower.includes('dato no disponible') || lower.includes('no disponible')) {
         cur.ab = 0;
         cur.h = 0;
         cur.avg = '.000';
         cur.battingLine = 'Dato no disponible';
-      } else if (String(value || '').toLowerCase().includes('no legible') || String(value || '').toLowerCase().includes('ilegible')) {
+      } else if (lower.includes('no legible') || lower.includes('ilegible')) {
         cur.ab = 0;
         cur.h = 0;
         cur.avg = '.000';
         cur.battingLine = 'No legible';
-      } else if (String(value || '').toLowerCase().includes('no jug')) {
-        cur.ab = 0;
-        cur.h = 0;
-        cur.avg = '.000';
-        cur.battingLine = 'No jugó';
-        cur.order = 0;
+      } else {
+        cur.battingLine = value;
+        const match = strVal.match(/(?:de\s+)?(\d+)\s*(?:[xX\-\/\*:\.]|por|a)\s*(\d+)/i);
+        if (match) {
+          let parsedAb = parseInt(match[1], 10) || 0;
+          let parsedH = parseInt(match[2], 10) || 0;
+          if (parsedH > parsedAb) {
+            const temp = parsedAb;
+            parsedAb = parsedH;
+            parsedH = temp;
+          }
+          cur.ab = parsedAb;
+          cur.h = parsedH;
+          cur.avg = parsedAb > 0 ? (parsedH / parsedAb).toFixed(3).replace(/^0\./, '.') : '.000';
+          if (!cur.order || cur.order === 0) {
+            cur.order = adjustingModal.batterIdx + 1;
+          }
+        }
       }
     } else if (field === 'ab' || field === 'h') {
       const numVal = Math.max(0, parseInt(value, 10) || 0);
@@ -536,6 +675,9 @@ export default function ScorebookModal({
       const curH = field === 'h' ? numVal : cur.h;
       cur.battingLine = `de ${curAb}-${curH}`;
       cur.avg = curAb > 0 ? (curH / curAb).toFixed(3).replace(/^0\./, '.') : '.000';
+      if (!cur.order || cur.order === 0) {
+        cur.order = adjustingModal.batterIdx + 1;
+      }
     } else if (['r', 'rbi', 'bb', 'so', 'hr', 'order'].includes(field)) {
       cur[field] = Math.max(0, parseInt(value, 10) || 0);
     } else {
@@ -552,26 +694,66 @@ export default function ScorebookModal({
     if (!adjustingModal || !editableBoxScore) return;
     setSavingAdjust(true);
     try {
-      const { teamIdx, batterIdx, batter } = adjustingModal;
+      const { teamIdx, batterIdx, batter, originalIdentity } = adjustingModal;
       const newTeams = [...editableBoxScore.teams];
       const targetTeam = { ...newTeams[teamIdx] };
       const targetBatters = [...targetTeam.batters];
 
-      const finalAb = Math.max(0, Number(batter.ab) || 0);
-      const finalH = Math.max(0, Number(batter.h) || 0);
-      const finalAvg = finalAb > 0 ? (finalH / finalAb).toFixed(3).replace(/^0\./, '.') : '.000';
+      const isDnp = 
+        String(batter.battingLine || '').toLowerCase().includes('no jug') || 
+        batter.battingLine === 'No jugó' ||
+        batter.order === 0;
+
+      const finalAb = isDnp ? 0 : Math.max(0, Number(batter.ab) || 0);
+      const finalH = isDnp ? 0 : Math.max(0, Number(batter.h) || 0);
+      const finalR = isDnp ? 0 : Math.max(0, Number(batter.r) || 0);
+      const finalRbi = isDnp ? 0 : Math.max(0, Number(batter.rbi) || 0);
+      const finalBb = isDnp ? 0 : Math.max(0, Number(batter.bb) || 0);
+      const finalSo = isDnp ? 0 : Math.max(0, Number(batter.so) || 0);
+      const finalHr = isDnp ? 0 : Math.max(0, Number(batter.hr) || 0);
+      const finalAvg = !isDnp && finalAb > 0 ? (finalH / finalAb).toFixed(3).replace(/^0\./, '.') : '.000';
+      const finalOrder = isDnp ? 0 : (batter.order ? Number(batter.order) : (batterIdx + 1));
+      const finalNotes = isDnp ? '' : (batter.extraNotes || '');
 
       const finalBatter: BoxScoreBatter = {
         ...batter,
+        battingLine: isDnp ? 'No jugó' : batter.battingLine,
+        order: finalOrder,
         ab: finalAb,
         h: finalH,
-        r: Math.max(0, Number(batter.r) || 0),
-        rbi: Math.max(0, Number(batter.rbi) || 0),
-        bb: Math.max(0, Number(batter.bb) || 0),
-        so: Math.max(0, Number(batter.so) || 0),
-        hr: Math.max(0, Number(batter.hr) || 0),
+        r: finalR,
+        rbi: finalRbi,
+        bb: finalBb,
+        so: finalSo,
+        hr: finalHr,
         avg: finalAvg,
+        extraNotes: finalNotes,
       };
+
+      // 1. Detect if the selected player is already assigned in another row of this team
+      const otherIdx = targetBatters.findIndex(
+        (b, idx) =>
+          idx !== batterIdx &&
+          ((finalBatter.playerId && b.playerId === finalBatter.playerId) ||
+            normalizeStr(b.name) === normalizeStr(finalBatter.name))
+      );
+
+      let successMessage = `¡Ajustes de ${finalBatter.name} guardados correctamente!`;
+
+      if (otherIdx !== -1 && originalIdentity) {
+        // AUTOMATIC PLAYER SWAP:
+        // The other row takes the original identity of batterIdx,
+        // while preserving 100% of its own stats, turns, and performance.
+        const otherBatter = targetBatters[otherIdx];
+        targetBatters[otherIdx] = {
+          ...otherBatter,
+          playerId: originalIdentity.playerId || '',
+          name: originalIdentity.name,
+          playerNumber: originalIdentity.playerNumber || '',
+          position: originalIdentity.position || otherBatter.position || '',
+        };
+        successMessage = `¡Intercambio realizado! ${finalBatter.name} y ${originalIdentity.name} intercambiaron posiciones conservando sus estadísticas.`;
+      }
 
       targetBatters[batterIdx] = finalBatter;
       targetTeam.batters = targetBatters;
@@ -603,7 +785,7 @@ export default function ScorebookModal({
 
       setEditableBoxScore(newBoxScoreData);
       setAdjustingModal(null);
-      setAdjustSuccessToast(`¡Ajustes de ${finalBatter.name} guardados correctamente!`);
+      setAdjustSuccessToast(successMessage);
       setTimeout(() => setAdjustSuccessToast(null), 4000);
     } catch (err: any) {
       console.error('Error saving batter adjustment:', err);
@@ -617,11 +799,47 @@ export default function ScorebookModal({
     if (!editableBoxScore) return;
     setSavingBoxScore(true);
     try {
-      const awayT = editableBoxScore.teams.find(t => t.teamType === 'away');
-      const homeT = editableBoxScore.teams.find(t => t.teamType === 'home');
+      // Ensure all teams and batters are sanitized (e.g. No jugó players strictly have 0 stats)
+      const sanitizedTeams = editableBoxScore.teams.map(team => {
+        const sanitizedBatters = team.batters.map(b => {
+          const isDnp = 
+            String(b.battingLine || '').toLowerCase().includes('no jug') || 
+            b.battingLine === 'No jugó' || 
+            b.order === 0;
+
+          if (isDnp) {
+            return {
+              ...b,
+              battingLine: 'No jugó',
+              order: 0,
+              ab: 0,
+              h: 0,
+              r: 0,
+              rbi: 0,
+              bb: 0,
+              so: 0,
+              hr: 0,
+              avg: '.000',
+              extraNotes: '',
+            };
+          }
+          return b;
+        });
+
+        const updatedTeam = {
+          ...team,
+          batters: sanitizedBatters,
+        };
+        updatedTeam.totals = recalculateTeamTotals(updatedTeam);
+        return updatedTeam;
+      });
+
+      const awayT = sanitizedTeams.find(t => t.teamType === 'away');
+      const homeT = sanitizedTeams.find(t => t.teamType === 'home');
       const updatePayload: Record<string, any> = {
         boxScore: cleanFirestoreData({
           ...editableBoxScore,
+          teams: sanitizedTeams,
           detectedAt: new Date().toISOString(),
           detectedBy: userProfile?.displayName || userProfile?.email || 'Jefe de Categoría',
         }),
@@ -641,6 +859,10 @@ export default function ScorebookModal({
         updatePayload.losingPitcher = editableBoxScore.losingPitcher;
       }
       await updateDoc(doc(db, 'games', game.id), cleanFirestoreData(updatePayload));
+      setEditableBoxScore({
+        ...editableBoxScore,
+        teams: sanitizedTeams,
+      });
       setIsEditing(false);
     } catch (err) {
       console.error('Error saving box score:', err);
@@ -1221,25 +1443,79 @@ export default function ScorebookModal({
 
                           {teamRoster.length > 0 && (
                             <optgroup label={`⚾ Roster Oficial: ${currentTName} (${teamRoster.length} jugadores)`}>
-                              {sortedRoster.map(p => (
-                                <option key={p.id} value={p.id}>
-                                  {p.number ? `#${p.number.replace(/^#/, '')} - ` : ''}{p.name} {p.position ? `(${p.position})` : ''}
-                                </option>
-                              ))}
+                              {sortedRoster.map(p => {
+                                const currentTeamBatters = editableBoxScore?.teams[adjustingModal.teamIdx]?.batters || [];
+                                const assignedIdx = currentTeamBatters.findIndex(
+                                  (b, idx) =>
+                                    (b.playerId && b.playerId === p.id) ||
+                                    normalizeStr(b.name) === normalizeStr(p.name)
+                                );
+                                const isHere = assignedIdx === adjustingModal.batterIdx;
+                                const isOther = assignedIdx !== -1 && !isHere;
+                                const suffix = isHere ? ' ✓ (Fila actual)' : isOther ? ` 🔄 (En fila ${assignedIdx + 1} - Intercambiar)` : '';
+
+                                return (
+                                  <option key={p.id} value={p.id}>
+                                    {p.number ? `#${p.number.replace(/^#/, '')} - ` : ''}{p.name} {p.position ? `(${p.position})` : ''}{suffix}
+                                  </option>
+                                );
+                              })}
                             </optgroup>
                           )}
 
                           {otherRoster.length > 0 && (
                             <optgroup label={`🔄 Roster del otro equipo: ${otherTName} (${otherRoster.length} jugadores)`}>
-                              {sortedOther.map(p => (
-                                <option key={p.id} value={p.id}>
-                                  {p.number ? `#${p.number.replace(/^#/, '')} - ` : ''}{p.name} {p.position ? `(${p.position})` : ''}
-                                </option>
-                              ))}
+                              {sortedOther.map(p => {
+                                const currentTeamBatters = editableBoxScore?.teams[adjustingModal.teamIdx]?.batters || [];
+                                const assignedIdx = currentTeamBatters.findIndex(
+                                  (b, idx) =>
+                                    (b.playerId && b.playerId === p.id) ||
+                                    normalizeStr(b.name) === normalizeStr(p.name)
+                                );
+                                const isHere = assignedIdx === adjustingModal.batterIdx;
+                                const isOther = assignedIdx !== -1 && !isHere;
+                                const suffix = isHere ? ' ✓ (Fila actual)' : isOther ? ` 🔄 (En fila ${assignedIdx + 1} - Intercambiar)` : '';
+
+                                return (
+                                  <option key={p.id} value={p.id}>
+                                    {p.number ? `#${p.number.replace(/^#/, '')} - ` : ''}{p.name} {p.position ? `(${p.position})` : ''}{suffix}
+                                  </option>
+                                );
+                              })}
                             </optgroup>
                           )}
                         </select>
                       </div>
+
+                      {/* Detection of automatic swap if the selected player is currently on another row */}
+                      {(() => {
+                        const currentTeamBatters = editableBoxScore?.teams[adjustingModal.teamIdx]?.batters || [];
+                        const otherAssignedRow = currentTeamBatters.map((b, idx) => ({ b, idx })).find(
+                          item =>
+                            item.idx !== adjustingModal.batterIdx &&
+                            ((adjustingModal.batter.playerId && item.b.playerId === adjustingModal.batter.playerId) ||
+                              normalizeStr(item.b.name) === normalizeStr(adjustingModal.batter.name))
+                        );
+
+                        if (!otherAssignedRow) return null;
+
+                        return (
+                          <div className="flex items-start gap-2.5 text-[11px] font-bold text-amber-900 dark:text-amber-200 bg-amber-100/90 dark:bg-amber-950/70 border-2 border-amber-400 dark:border-amber-600/80 p-3 rounded-xl shadow-sm">
+                            <ArrowLeftRight className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                            <div>
+                              <p className="font-black text-amber-900 dark:text-amber-200 uppercase tracking-wide">
+                                🔄 Intercambio automático de jugadores activado
+                              </p>
+                              <p className="font-semibold text-amber-950 dark:text-amber-100 mt-0.5">
+                                <strong>{adjustingModal.batter.name}</strong> ya está asignado en la <strong>fila #{otherAssignedRow.idx + 1}</strong>.
+                              </p>
+                              <p className="text-[10px] text-amber-800/90 dark:text-amber-300/90 mt-1">
+                                Al guardar, las posiciones se intercambiarán automáticamente: esta fila quedará como <strong>{adjustingModal.batter.name}</strong> y la fila #{otherAssignedRow.idx + 1} pasará a ser <strong>{adjustingModal.originalIdentity?.name || 'el jugador anterior'}</strong>. Las estadísticas de cada fila se mantendrán intactas y no habrá nombres duplicados.
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       {/* Verification Status Banner */}
                       {matchedInTeam ? (
@@ -1365,6 +1641,44 @@ export default function ScorebookModal({
                       </button>
                     ))}
                   </div>
+
+                  {/* Status Banner & One-Click Toggle for "No jugó" / "Jugó" */}
+                  {(() => {
+                    const isDnp = adjustingModal.batter.battingLine === 'No jugó' || adjustingModal.batter.order === 0 || String(adjustingModal.batter.battingLine || '').toLowerCase().includes('no jug');
+                    if (isDnp) {
+                      return (
+                        <div className="flex items-center justify-between p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 rounded-xl mt-2">
+                          <div className="flex items-center gap-2">
+                            <Ban className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                            <span className="text-xs font-black text-rose-700 dark:text-rose-300">
+                              Marcado como «No jugó» (Todas las estadísticas en 0)
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleAdjustFieldChange('battingLine', 'de 0-0')}
+                            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-black uppercase transition-colors cursor-pointer shadow-sm"
+                          >
+                            ⚾ Cambiar a «Jugó»
+                          </button>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="flex items-center justify-between p-2 bg-slate-100/90 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl mt-2">
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                          ¿El jugador no vio acción en este partido?
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleAdjustFieldChange('battingLine', 'No jugó')}
+                          className="px-2.5 py-1 bg-white hover:bg-rose-50 dark:bg-slate-700 dark:hover:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-300 dark:border-rose-800/60 rounded-lg text-[10px] font-black uppercase transition-colors cursor-pointer shadow-sm"
+                        >
+                          🚫 Establecer «No jugó» (Ceros)
+                        </button>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Row 3: Numeric Stats Grid */}
@@ -1739,24 +2053,26 @@ export default function ScorebookModal({
                                 const { roster: teamRoster, otherRoster } = getTeamRoster(activeTeamIdx);
                                 const selPlayer = [...teamRoster, ...otherRoster].find(p => p.id === selId);
                                 if (selPlayer) {
-                                  handleBatterChange(activeTeamIdx, bIdx, 'name', selPlayer.name);
-                                  if (selPlayer.number) {
-                                    handleBatterChange(activeTeamIdx, bIdx, 'playerNumber', `#${selPlayer.number.replace(/^#/, '')}`);
-                                  }
-                                  if (selPlayer.position) {
-                                    handleBatterChange(activeTeamIdx, bIdx, 'position', selPlayer.position);
-                                  }
-                                  handleBatterChange(activeTeamIdx, bIdx, 'playerId' as any, selPlayer.id);
+                                  handleAssignPlayerWithSwap(activeTeamIdx, bIdx, selPlayer);
                                 }
                               }}
                               className="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-indigo-300 dark:border-indigo-600 rounded-lg text-xs font-bold text-slate-900 dark:text-white"
                             >
                               <option value="">-- Asignar del roster --</option>
-                              {getTeamRoster(activeTeamIdx).roster.map(p => (
-                                <option key={p.id} value={p.id}>
-                                  {p.number ? `#${p.number.replace(/^#/, '')} ` : ''}{p.name}
-                                </option>
-                              ))}
+                              {getTeamRoster(activeTeamIdx).roster.map(p => {
+                                const currentTeamBatters = editableBoxScore?.teams[activeTeamIdx]?.batters || [];
+                                const assignedIdx = currentTeamBatters.findIndex(
+                                  (b, idx) => (b.playerId && b.playerId === p.id) || normalizeStr(b.name) === normalizeStr(p.name)
+                                );
+                                const isHere = assignedIdx === bIdx;
+                                const isOther = assignedIdx !== -1 && !isHere;
+                                return (
+                                  <option key={p.id} value={p.id}>
+                                    {p.number ? `#${p.number.replace(/^#/, '')} ` : ''}{p.name}
+                                    {isHere ? ' ✓' : isOther ? ` 🔄 (Fila ${assignedIdx + 1})` : ''}
+                                  </option>
+                                );
+                              })}
                             </select>
                             <input
                               type="text"
