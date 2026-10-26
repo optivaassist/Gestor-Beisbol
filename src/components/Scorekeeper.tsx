@@ -7,6 +7,7 @@ import { ChevronLeft, Plus, Minus, Trophy, History, Users, Activity, Play as Pla
 import ScorebookModal from './ScorebookModal';
 import TeamLogo from './TeamLogo';
 import { cleanFirestoreData, hasUploadedBooks, getUploadedSheetsCount, reconcileBoxScore, reconcilePitchingBoxScore, mergeBoxScores, mergePitchingBoxScores, processScorebookFile, saveScorebookFile, deleteGameScorebookFiles, sanitizeScorebooksForMainDoc } from '../utils/scorebookUtils';
+import { parseApiResponse } from '../utils/apiHelper';
 import {
   DndContext,
   closestCenter,
@@ -115,7 +116,7 @@ export default function Scorekeeper({ gameId, userRole, userProfile, onBack, ini
             bookCategory: category,
           })
         });
-        const result = await response.json();
+        const result = await parseApiResponse(response, 'Error al analizar el libro de anotación.');
 
         const sheetKey = isPitch ? 'awayPitching' : 'awayBatting';
 

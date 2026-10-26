@@ -32,6 +32,7 @@ import {
   sanitizeScorebooksForMainDoc,
   hasUploadedBooks
 } from '../utils/scorebookUtils';
+import { parseApiResponse } from '../utils/apiHelper';
 import { Target, Activity } from 'lucide-react';
 
 interface ScorebookUploadModalProps {
@@ -215,11 +216,7 @@ export default function ScorebookUploadModal({
         }),
       });
 
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Error al analizar el libro de anotación.');
-      }
+      const result = await parseApiResponse(response, 'Error al analizar el libro de anotación.');
 
       setProcessingStep(
         isPitch

@@ -22,6 +22,7 @@ import {
   deleteGameScorebookFiles,
   sanitizeScorebooksForMainDoc
 } from '../utils/scorebookUtils';
+import { parseApiResponse } from '../utils/apiHelper';
 
 interface DashboardProps {
   userRole: string;
@@ -227,7 +228,7 @@ export default function Dashboard({ userRole, userProfile, onSelectGame }: Dashb
         })
       });
 
-      const result = await response.json();
+      const result = await parseApiResponse(response, 'Error al analizar el libro de anotación.');
 
       let boxScoreData: GameBoxScoreData = {
         teams: result.data?.teams || [],

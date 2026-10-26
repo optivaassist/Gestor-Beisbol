@@ -21,6 +21,7 @@ import {
   Shield 
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { parseApiResponse } from '../utils/apiHelper';
 
 interface CedulaUploadModalProps {
   isOpen: boolean;
@@ -175,11 +176,7 @@ export default function CedulaUploadModal({
         }),
       });
 
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'No se pudo procesar la cédula.');
-      }
+      const result = await parseApiResponse(response, 'No se pudo procesar la cédula.');
 
       const data = result.data;
       const rawPlayers = data.players || [];

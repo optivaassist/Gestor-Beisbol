@@ -31,6 +31,7 @@ import {
   Ban
 } from 'lucide-react';
 import { fetchTeamRoster, reconcileBoxScore, mergeBoxScores, processScorebookFile, cleanFirestoreData, loadScorebookFile, deleteGameScorebookFiles, hasUploadedBooks, getUploadedSheetsCount, normalizeStr } from '../utils/scorebookUtils';
+import { parseApiResponse } from '../utils/apiHelper';
 
 interface ScorebookModalProps {
   game: Game;
@@ -266,21 +267,7 @@ export default function ScorebookModal({
         }),
       });
 
-      let result: any = null;
-      try {
-        result = await response.json();
-      } catch (e) {
-        // Fallback if not json
-      }
-
-      if (!response.ok || !result || !result.success) {
-        const errorMsg =
-          result?.error ||
-          (response.status === 503
-            ? 'El servicio de IA experimenta alta demanda en este momento. Por favor presiona "Reintentar".'
-            : 'Error al procesar el libro con IA');
-        throw new Error(errorMsg);
-      }
+      const result = await parseApiResponse(response, 'Error al procesar el libro con IA');
 
       let boxScoreData: GameBoxScoreData = {
         teams: result.data.teams || [],

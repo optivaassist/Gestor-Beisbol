@@ -26,9 +26,27 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Middleware for parsing JSON with support for large image payloads
-  app.use(express.json({ limit: '35mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '35mb' }));
+  // Middleware for parsing JSON with support for large image payloads (up to 50mb)
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+  // Middleware to catch body-parser errors (like 413 entity too large) and guarantee JSON response
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (err) {
+      console.error('Express request body error:', err.message);
+      if (err.type === 'entity.too.large' || err.status === 413) {
+        return res.status(413).json({
+          success: false,
+          error: 'El archivo es demasiado grande (supera el límite permitido). Por favor sube una imagen de menor resolución o comprime el documento.',
+        });
+      }
+      return res.status(err.status || 400).json({
+        success: false,
+        error: err.message || 'Error en el formato de la solicitud.',
+      });
+    }
+    next();
+  });
 
   // Lazy initialization of Gemini AI Client
   let aiClient: GoogleGenAI | null = null;
@@ -452,8 +470,8 @@ REGLAS ESTRICTAS DE ASIGNACIÓN:
 
       const responseSchema = isPitching ? pitchingResponseSchema : battingResponseSchema;
 
-      // Resilient model fallback list
-      const MODELS_TO_TRY = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'];
+      // Resilient model fallback list (fastest and most capable first)
+      const MODELS_TO_TRY = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
       let lastError: any = null;
       let parsedData: any = null;
 
@@ -471,7 +489,8 @@ REGLAS ESTRICTAS DE ASIGNACIÓN:
           });
 
           const rawText = response.text || "{}";
-          parsedData = JSON.parse(rawText);
+          const cleanJsonText = rawText.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+          parsedData = JSON.parse(cleanJsonText);
           console.log(`Análisis de libro completado exitosamente con ${currentModel}`);
           break;
         } catch (err: any) {
@@ -1250,6 +1269,27 @@ Devuelve TODOS los jugadores de la cédula en el esquema JSON configurado.`;
         error: err.message || 'Error al procesar la cédula con Gemini.',
       });
     }
+  });
+
+  // Handle any unmatched /api/* requests with a clean JSON 404 so they NEVER fall through to Vite SPA index.html
+  app.all('/api/*', (req, res) => {
+    return res.status(404).json({
+      success: false,
+      error: `Ruta de API no encontrada: ${req.method} ${req.originalUrl}`,
+    });
+  });
+
+  // Global API error middleware: ensures any uncaught error in /api routes returns JSON instead of Express HTML
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (req.path.startsWith('/api') || req.originalUrl.startsWith('/api')) {
+      console.error('Unhandled API Error Middleware:', err);
+      const status = err.status || err.statusCode || 500;
+      return res.status(status).json({
+        success: false,
+        error: err.message || 'Error interno en el servidor API',
+      });
+    }
+    next(err);
   });
 
   // Vite middleware for development

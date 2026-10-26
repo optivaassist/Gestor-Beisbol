@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, onSnapshot, query, orderBy, where } from 'firebase/firestore';
-import { Team, CATEGORIES, Category, Game, formatTeamName } from '../types';
+import { Team, CATEGORIES, Category, Game, Season, formatTeamName } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Trophy, TrendingUp, Hash, Activity, Shield } from 'lucide-react';
+import { Trophy, TrendingUp, Hash, Activity, Shield, FileDown } from 'lucide-react';
 import TeamLogo from './TeamLogo';
+import StandingsExportModal from './StandingsExportModal';
 
 import { matchTeamNameWithAliases } from '../utils/scorebookUtils';
 
@@ -58,8 +59,10 @@ const getGameScores = (g: Game) => {
 export default function Standings() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [games, setGames] = useState<Game[]>([]);
+  const [seasons, setSeasons] = useState<Season[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<Category>('Colt');
   const [loading, setLoading] = useState(true);
+  const [showExportModal, setShowExportModal] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -83,9 +86,18 @@ export default function Standings() {
       setLoading(false);
     });
 
+    const seasonsQuery = query(collection(db, 'seasons'));
+    const unsubscribeSeasons = onSnapshot(seasonsQuery, (snapshot) => {
+      const seasonsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Season));
+      setSeasons(seasonsData);
+    }, (error) => {
+      console.error("Error fetching seasons:", error);
+    });
+
     return () => {
       unsubscribeTeams();
       unsubscribeGames();
+      unsubscribeSeasons();
     };
   }, []);
 
@@ -235,18 +247,30 @@ export default function Standings() {
       animate={{ opacity: 1, y: 0 }}
       className="space-y-10"
     >
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div className="space-y-1">
-          <h2 className="text-4xl font-black tracking-tight uppercase">Tabla <span className="text-indigo-600">Posiciones</span></h2>
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="text-4xl font-black tracking-tight uppercase">
+              Tabla <span className="text-indigo-600">Posiciones</span>
+            </h2>
+            <button
+              onClick={() => setShowExportModal(true)}
+              className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-black px-4 py-2.5 rounded-2xl transition-all shadow-lg shadow-indigo-600/25 active:scale-95 cursor-pointer text-xs uppercase tracking-wider"
+              title="Exportar tabla de posiciones oficial a documento PDF"
+            >
+              <FileDown className="w-4 h-4" />
+              <span>Exportar PDF</span>
+            </button>
+          </div>
           <p className="text-slate-500 dark:text-slate-400 font-medium">Clasificaciones actuales por categoría.</p>
         </div>
         
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {CATEGORIES.map(cat => (
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
-              className={`px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-[0.15em] transition-all border-2 ${
+              className={`px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-[0.15em] transition-all border-2 cursor-pointer ${
                 selectedCategory === cat
                   ? 'bg-indigo-600 border-indigo-600 text-white shadow-xl shadow-indigo-600/20'
                   : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500 hover:border-indigo-600/50'
@@ -390,6 +414,15 @@ export default function Standings() {
           )}
         </motion.div>
       </AnimatePresence>
+
+      <StandingsExportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        teams={teams}
+        games={games}
+        seasons={seasons}
+        initialCategory={selectedCategory}
+      />
     </motion.div>
   );
 }
